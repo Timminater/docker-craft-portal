@@ -30,6 +30,14 @@ Single-user mode isolates apps from the administrator but shares one app origin
 between apps. App OPFS/IndexedDB remains on client devices and is not included in
 server backups. Changing an app hostname changes its browser storage origin.
 
+## Multiple accounts without wildcard TLS
+
+Keep the two ordinary HTTPS origins above, leave `CRAFT_APPS_DOMAIN` empty and
+set `CRAFT_SHARED_APP_MULTI_USER=true`. This explicitly accepts separate OS/browser
+profiles as the local-document boundary. Accounts in one profile share app storage.
+For embedded cookies, use same-site hostnames. See [workspace configuration](../workspace.md)
+for the dock, fallback, proxy headers and origin-migration steps.
+
 ## Unraid bind mounts
 
 Replace `craft-data:/data` with `/mnt/user/appdata/craft-portal:/data`. Create the

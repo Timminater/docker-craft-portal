@@ -50,7 +50,8 @@ The live app data is in `data/` and **must not be committed to Git**. Existing d
 | `CRAFT_DATA_DIR` | `/data` | Writable persistent directory |
 | `CRAFT_PUBLIC_URL` | `http://localhost:8080` | Exact HTTPS portal origin in production |
 | `CRAFT_APPS_DOMAIN` | unset | Enables safe multiple accounts with per-user/app hostnames |
-| `CRAFT_SINGLE_APP_URL` | local `http://127.0.0.1:8080` when portal uses localhost | Separate app origin for single-user production; mandatory outside localhost unless `CRAFT_APPS_DOMAIN` is configured |
+| `CRAFT_SINGLE_APP_URL` | local `http://127.0.0.1:8080` when portal uses localhost | Separate app origin; shared multi-user is an explicit opt-in, otherwise one account |
+| `CRAFT_SHARED_APP_MULTI_USER` | `false` | Allow multiple accounts on that app origin when each person uses a separate OS/browser profile; requires `CRAFT_SINGLE_APP_URL` and no `CRAFT_APPS_DOMAIN` |
 | `GITHUB_TOKEN` | unset | Optional API-rate-limit token; do not commit secrets |
 | `CRAFT_AUTO_START_UPDATES` | `true` | `false` for offline tests |
 
@@ -65,6 +66,21 @@ Portal settings (stored in SQLite; editable in Admin UI):
 | Include prereleases | Off (locked off in current MVP) |
 
 Manual update button initiates a new discovery cycle. On failure, the currently installed version remains usable.
+
+## App workspace and multi-user without wildcard TLS
+
+Apps open inside the portal above a bottom dock. Switching keeps each open app
+mounted; returning to the library or admin pages does not reload it. Up to four
+apps can remain open at once. Close/restart explicitly after saving, or use
+**Open separately** for app features that do not work embedded.
+
+For several accounts without wildcard certificates, set one separate app HTTPS
+origin plus `CRAFT_SHARED_APP_MULTI_USER=true` and leave `CRAFT_APPS_DOMAIN` empty.
+Every person must use a separate OS/browser profile: portal accounts authorize
+server access, while local documents/caches are shared by accounts within one
+browser profile. This is the explicitly accepted alternative to per-user origins.
+Use same-site hostnames for reliable embedded cookies. See the complete
+[workspace and shared-host guide](docs/workspace.md) below.
 
 ## Reverse proxy, HTTPS and WebGPU
 

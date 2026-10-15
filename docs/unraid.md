@@ -3,9 +3,9 @@
 The repository supplies a Docker **version 2 user template** at
 [`unraid/docker-craft-portal.xml`](../unraid/docker-craft-portal.xml). This is a
 manual installation option, not a Community Applications listing or submission.
-It pins `ghcr.io/timminater/docker-craft-portal:v0.1.0-rc.2`. The image is publicly published for AMD64 and ARM64; its release workflow passed
+It pins `ghcr.io/timminater/docker-craft-portal:v0.1.0-rc.3`. The image is publicly published for AMD64 and ARM64; its release workflow passed
 unit, Chromium/Firefox and multiarch container checks. See the
-[release](https://github.com/Timminater/docker-craft-portal/releases/tag/v0.1.0-rc.2)
+[release](https://github.com/Timminater/docker-craft-portal/releases/tag/v0.1.0-rc.3)
 and [package](https://github.com/Timminater/docker-craft-portal/pkgs/container/docker-craft-portal). Review
 [acceptance evidence](ACCEPTANCE.md) and [known limitations](KNOWN_LIMITATIONS.md)
 before public deployment. Installing a template does not verify production readiness.
@@ -76,7 +76,14 @@ interfaces: it must not be forwarded directly from your router or exposed to
 untrusted LAN clients. Check port 8080 is free or change the host mapping and
 proxy upstream together. Keep the container port at 8080.
 
-For multiple accounts, clear `CRAFT_SINGLE_APP_URL` entirely, then set
+For multiple accounts **without wildcard TLS**, keep the two ordinary HTTPS
+origins and set `CRAFT_SHARED_APP_MULTI_USER=true`, leaving `CRAFT_APPS_DOMAIN`
+empty. Every person must use their own OS/browser profile; portal accounts do not
+separate local app documents inside one profile. Use hostnames under the same
+parent site for embedded cookies. See [the workspace guide](workspace.md).
+
+For stronger per-account/app origin isolation, keep that flag false, clear
+`CRAFT_SINGLE_APP_URL` entirely, then set
 `CRAFT_APPS_DOMAIN=apps.your-domain.example` without a scheme or port. Set up
 wildcard DNS and TLS for `*.apps.your-domain.example`, routing all app hosts to
 the same backend. The two app-origin configuration modes are mutually exclusive.

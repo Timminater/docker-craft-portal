@@ -55,8 +55,14 @@ precise remaining work.
   Upstream service workers can explicitly cache app responses despite HTTP
   no-store. OPFS/IndexedDB remain on devices; separate browser profiles are
   recommended for shared devices.
-- Single-user deployments share one app origin among apps. Multi-user wildcard
-  origins isolate account/app storage; they do not synchronize or encrypt files.
+- Single-user and explicit shared-host multi-user deployments share one app
+  origin among apps. Shared-host mode requires separate OS/browser profiles;
+  portal accounts in one profile do not isolate documents. Wildcard origins
+  remain available for account/app storage isolation. Neither mode syncs files.
+- Embedded compatibility is app/browser dependent. Use Open separately if
+  iframe storage, external resources or app permissions fail. Same-site HTTPS
+  hostnames support the retained cookie policy. Up to four app frames remain
+  mounted; no automatic eviction of unsaved app state is performed.
 - Keep active + configured previous releases. A tab on a version removed by
   retention can fail on a later lazy asset load; tabs are not tracked.
 - Rollback changes app code and pauses its automatic updates, not document formats

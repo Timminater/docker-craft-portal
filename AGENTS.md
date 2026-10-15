@@ -21,8 +21,9 @@ If subagents are available, use **non-overlapping** tasks: security+auth review,
 
 ## Security invariants
 - Do not expose raw WASM assets before session authorization. No public alias path.
-- In multi-user mode, always bind each app session to both exact user public ID and app slug host.
-- Do not convert multi-user mode to path-only namespace: OPFS/IndexedDB isolate by origin, not by authenticated username.
+- In default isolated multi-user mode, bind each app session to exact user public ID and app slug host.
+- The owner explicitly authorized an alternative shared-host mode with `CRAFT_SHARED_APP_MULTI_USER=true`: every person uses their own OS/browser profile. In this mode, portal accounts do NOT isolate OPFS/IndexedDB; describe that boundary accurately. Keep this an explicit opt-in and preserve wildcard mode.
+- The portal and app origin must always use distinct hostnames. Embedded apps must not read portal APIs/cookies, navigate the top frame, or receive tickets through postMessage/logs. Keep bridge message checks bound to exact origin, source frame and slug.
 - Trust only the official getartcraft catalog and `github.com/storytold/<slug>` for release assets.
 - Fail closed on mismatched SHA-256, arbitrary redirects, symlinks, traversal and ZIP bombs.
 - Never unpack over active files. Keep explicit rollback and preserve last known-good release.

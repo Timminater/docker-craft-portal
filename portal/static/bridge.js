@@ -5,6 +5,12 @@
   const parts = new URLSearchParams(location.hash.substring(1));
   const ticket = parts.get('ticket');
   const slug = parts.get('slug');
+  const embedded=parts.get('embedded')==='1';
+  const portalOrigin=document.querySelector('meta[name="craft-portal-origin"]')?.content;
+  function report(type){
+    if(!embedded||window.parent===window||!portalOrigin)return;
+    try{const origin=new URL(portalOrigin).origin;if(origin!==portalOrigin)return;window.parent.postMessage({type,slug},origin);}catch{}
+  }
   history.replaceState(null, '', location.pathname);
   if (!ticket || !slug) { message.textContent = t("Open deze applicatie via het Craft Portal."); return; }
   try {
@@ -13,12 +19,15 @@
       credentials: 'same-origin', body: JSON.stringify({ticket,slug}), cache:'no-store'
     });
     if (!resp.ok) throw new Error(t("Toegang geweigerd of verlopen."));
+    await resp.arrayBuffer(); // Finish the redemption response before navigating the frame.
     // Resolve the active app version after redeeming the one-time ticket.
     const info = await fetch('/_app_info?slug=' + encodeURIComponent(slug), {credentials:'same-origin',cache:'no-store'});
     if (!info.ok) throw new Error(t("Applicatieversie niet beschikbaar."));
     const data = await info.json();
-    location.replace(location.hostname.startsWith(slug + '--')
-      ? `/v/${encodeURIComponent(data.version)}/`
-      : `/a/${encodeURIComponent(slug)}/v/${encodeURIComponent(data.version)}/`);
-  } catch (err) { message.textContent = err instanceof TypeError ? t('Kan geen verbinding maken met Craft Portal. Controleer je server of vernieuw de pagina.') : err.message; }
+    const path=data.path;
+    if(typeof path!=='string'||!path.startsWith('/')||path.startsWith('//')||new URL(path,location.origin).origin!==location.origin)throw new Error(t('Applicatieversie niet beschikbaar.'));
+    // This only confirms successful authentication/navigation, not app compatibility.
+    report('craft-bridge-navigating');
+    location.replace(path);
+  } catch (err) { report('craft-bridge-error');message.textContent = err instanceof TypeError ? t('Kan geen verbinding maken met Craft Portal. Controleer je server of vernieuw de pagina.') : err.message; }
 })();

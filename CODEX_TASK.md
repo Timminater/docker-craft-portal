@@ -19,7 +19,7 @@ The current repository is a functional initial implementation. **Do not replace 
 - Fresh Docker container provides login/setup and automatically installs official WASM apps without rebuilding the image.
 - Every 6 hours the updater checks the official catalog; new apps and new stable releases appear automatically.
 - An interrupted download or bad digest does not break the currently served app. Retention is active + two previous releases, with safe rollback.
-- Unauthenticated requests cannot fetch protected app files. **All deployments**, including single-user, must isolate app origin from admin portal origin. Multi-user mode additionally gives distinct origin per account and app.
+- Unauthenticated requests cannot fetch protected app files. **All deployments**, including single-user, must isolate app origin from admin portal origin. Default isolated multi-user mode additionally gives distinct origin per account and app. The owner later authorized explicit shared-host multi-user for separate OS/browser profiles; that opt-in must not claim account-level browser storage isolation.
 - Admin can manage settings, users (when multiuser is configured), pause updates and inspect history.
 - Native installers are links to official GitHub release assets, not proxied/scraped executables.
 - Responsive UX and accessible controls, documentation and reproducible tests.

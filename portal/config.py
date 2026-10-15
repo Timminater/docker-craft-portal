@@ -14,6 +14,7 @@ class Config:
     public_url: str
     apps_domain: str
     single_app_url: str = ""
+    shared_app_multi_user: bool = False
     trusted_owner: str = "storytold"
     catalog_url: str = "https://getartcraft.com/apps"
     github_token: str = ""
@@ -67,6 +68,8 @@ class Config:
             if app.scheme != "https" and (app.hostname not in {"localhost", "127.0.0.1", "::1"}
                                            or public.hostname not in {"localhost", "127.0.0.1", "::1"}):
                 raise ValueError("CRAFT_SINGLE_APP_URL requires HTTPS outside local development")
+        if self.shared_app_multi_user and (not single or domain):
+            raise ValueError("CRAFT_SHARED_APP_MULTI_USER requires CRAFT_SINGLE_APP_URL without CRAFT_APPS_DOMAIN")
         object.__setattr__(self, "public_url", self.public_url.rstrip("/"))
         object.__setattr__(self, "single_app_url", single.rstrip("/"))
         object.__setattr__(self, "apps_domain", domain)
@@ -85,6 +88,7 @@ class Config:
             public_url=public_url,
             apps_domain=domain,
             single_app_url=single,
+            shared_app_multi_user=os.getenv("CRAFT_SHARED_APP_MULTI_USER", "false").lower() in {"1", "true", "on"},
             github_token=os.getenv("GITHUB_TOKEN", ""),
             auto_start_updates=os.getenv("CRAFT_AUTO_START_UPDATES", "true").lower() not in {"0", "false", "off"},
         )
@@ -99,7 +103,19 @@ class Config:
 
     @property
     def multi_user(self) -> bool:
+        return bool(self.apps_domain) or self.shared_app_multi_user
+
+    @property
+    def isolated_app_origins(self) -> bool:
         return bool(self.apps_domain)
+
+    @property
+    def app_origin_mode(self) -> str:
+        if self.isolated_app_origins:
+            return "isolated"
+        if self.single_app_url:
+            return "shared" if self.shared_app_multi_user else "single"
+        return "none"
 
     @property
     def app_origin_configured(self) -> bool:

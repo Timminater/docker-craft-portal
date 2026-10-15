@@ -63,9 +63,9 @@ def test_localized_portal_pages_without_console_errors(browser, site, locale, la
             app.state.db.run('INSERT INTO apps(slug,name,description,status) VALUES(?,?,?,?)',
                              (slug, name, '', 'pending'))
         page.reload()
-        page.locator('[data-open="vectorcraft"]').wait_for()
-        assert page.locator('[data-open="photocraft"]').is_enabled()
-        assert page.locator('[data-open="vectorcraft"]').is_disabled()
+        page.locator('#app [data-open="vectorcraft"]').wait_for()
+        assert page.locator('#app [data-open="photocraft"]').is_enabled()
+        assert page.locator('#app [data-open="vectorcraft"]').is_disabled()
         for width, height, label in [(1440, 1000, 'desktop'), (390, 844, 'mobile')]:
             page.set_viewport_size({'width': width, 'height': height})
             settled('apps-' + label)

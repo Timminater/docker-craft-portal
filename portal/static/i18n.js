@@ -441,6 +441,22 @@
     "CAD": "CAD"
   }
 };
+ const workspaceText={
+ 'workspace.dock':['Application dock','Applicatiestartbalk'],
+ 'workspace.enableAccounts':['Extra accounts require isolated app origins, or shared app domain mode with a separate browser profile for every person. See the deployment guide to configure multi-user access.','Extra accounts vereisen gescheiden app-origins, of de modus voor een gedeeld app-domein met een eigen browserprofiel per persoon. Bekijk de installatiehandleiding om meerdere gebruikers in te stellen.'],
+ 'workspace.library':['Library','Bibliotheek'],
+ 'workspace.separate':['Open separately','Apart openen'],
+ 'workspace.retry':['Restart','Herstarten'],
+ 'workspace.close':['Close app','App sluiten'],
+ 'workspace.starting':['Opening secure application session…','Beveiligde applicatiesessie openen…'],
+ 'workspace.compatibility':['Save before closing · App not working? Open separately.','Sla op voor sluiten · Werkt de app niet? Open deze apart.'],
+ 'workspace.failed':['Could not open the app here. Restart it or open it separately.','De app kon hier niet worden geopend. Herstart deze of open deze apart.'],
+ 'workspace.limit':['Up to four apps can stay open. Save and close an app before opening another.','Er kunnen maximaal vier apps open blijven. Sla een app op en sluit deze voordat je een andere opent.'],
+ 'workspace.confirmClose':['Save your work first. Closing or restarting this app may discard unsaved changes. Continue?','Sla eerst je werk op. Sluiten of herstarten van deze app kan niet-opgeslagen wijzigingen wissen. Doorgaan?'],
+ 'workspace.confirmLogout':['Save your work first. Logging out closes all open apps. Continue?','Sla eerst je werk op. Uitloggen sluit alle geopende apps. Doorgaan?'],
+ 'workspace.sharedStorage':['Shared app domain: local documents belong to the browser profile, not the portal account. Each person must use a separate computer account or browser profile. Switching portal accounts in the same browser profile does not separate local data. Apps on this domain also share browser storage.','Gedeeld app-domein: lokale documenten horen bij het browserprofiel, niet bij het portalaccount. Gebruik per persoon een eigen computeraccount of browserprofiel. Wisselen van portalaccount binnen hetzelfde browserprofiel scheidt lokale gegevens niet. Apps op dit domein delen ook browseropslag.']
+ };
+ for(const [key,[en,nl]] of Object.entries(workspaceText)){dictionaries.en[key]=en;dictionaries.nl[key]=nl;}
  const languages = navigator.languages?.length ? navigator.languages : [navigator.language || 'en'];
  const locale = languages.map(value=>String(value).toLowerCase().split('-')[0]).find(value=>value==='nl'||value==='en') || 'en';
  document.documentElement.lang=locale;

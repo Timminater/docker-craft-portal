@@ -1,7 +1,7 @@
 'use strict';
 const {t, locale, errorMessage, updaterResult} = CraftI18n;
 const root = document.getElementById('app');
-const state = {setup:false,user:null,csrf:null,multiUser:false,appOriginConfigured:false,apps:[],admin:null,page:'apps',search:'',favs:[],poll:null,adminError:'',polling:false};
+const state = {setup:false,user:null,csrf:null,multiUser:false,appOriginConfigured:false,appOriginMode:'',apps:[],admin:null,page:'apps',search:'',favs:[],poll:null,adminError:'',polling:false};
 const e = x => String(x ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const colors = [['#9b65e8','#5a65ed'],['#2899e2','#2869bb'],['#f4a33d','#d45358'],['#32b89c','#217c8d'],['#e478a0','#a84d98'],['#7161d6','#bd69af'],['#17a08d','#2b72aa']];
 const icons = {apps:'▦',admin:'⚙',users:'♙',events:'◷'};
@@ -14,15 +14,15 @@ async function api(path, {method='GET', data=null,auth=true}={}) {
   if(auth && state.csrf && method!=='GET')headers['X-Craft-CSRF']=state.csrf;
   const r=await fetch(path,{method,headers,body:data===null?undefined:JSON.stringify(data),credentials:'same-origin',cache:'no-store'});
   if(!r.ok){let err={};try{err=await r.json();}catch{};
-    if(r.status===401 && auth){state.user=null;state.csrf=null;render();}
+    if(r.status===401 && auth){resetWorkspace();state.user=null;state.csrf=null;render();}
     throw new Error(errorMessage(typeof err.detail==='string'?err.detail:`HTTP ${r.status}`));
   }
   return r.json();
 }
 function userFavorites(){try{return JSON.parse(localStorage.getItem(`craft:favs:${state.user.public_id}`)||'[]');}catch{return [];}}
 function saveFaves(){localStorage.setItem(`craft:favs:${state.user.public_id}`,JSON.stringify(state.favs));}
-async function init(){try{let b=await api('/api/bootstrap',{auth:false});state.setup=b.setup_required;state.user=b.user;state.csrf=b.csrf;state.multiUser=b.multi_user;state.appOriginConfigured=b.app_origin_configured;if(state.user){state.favs=userFavorites();await loadApps();}render();}catch(ex){root.innerHTML=`<div class="boot">${e(t("Kan geen verbinding maken met Craft Portal. Controleer je server of vernieuw de pagina."))}</div>`;}}
-async function loadApps(){const a=await api('/api/apps');state.apps=a.apps;}
+async function init(){try{let b=await api('/api/bootstrap',{auth:false});state.setup=b.setup_required;if(state.user?.public_id!==b.user?.public_id)resetWorkspace();state.user=b.user;state.csrf=b.csrf;state.multiUser=b.multi_user;state.appOriginConfigured=b.app_origin_configured;state.appOriginMode=b.app_origin_mode||'';if(state.user){state.favs=userFavorites();await loadApps();}render();}catch(ex){root.innerHTML=`<div class="boot">${e(t("Kan geen verbinding maken met Craft Portal. Controleer je server of vernieuw de pagina."))}</div>`;}}
+async function loadApps(){const a=await api('/api/apps');state.apps=a.apps;reconcileWorkspace();}
 async function loadAdmin(){state.admin=await api('/api/admin/status');}
 function brand(){return `<div class="brand"><div class="brand-mark">✦</div><strong>Craft Portal</strong></div>`;}
 function shell(content){return `<div class="app-shell"><aside class="sidebar">${brand()}<nav class="nav" aria-label="${e(t("Hoofdnavigatie"))}">
@@ -63,7 +63,7 @@ function card(app){const i=[...app.slug].reduce((hash,char)=>(hash*31+char.charC
  <div class="card-footer"><span class="tiny muted">${app.latest_version?`Release ${e(app.latest_version)}`:e(t('Nog niet geïnstalleerd'))}</span><div class="card-actions"><button class="mini" data-download="${e(app.slug)}" aria-label="${e(t('Desktopversie downloaden'))}" title="${e(t('Desktopversie'))}">↓</button><button class="primary" data-open="${e(app.slug)}" ${ready&&state.appOriginConfigured?'':'disabled'}>${e(t('Openen'))}<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 12 12 4M5 4h7v7"/></svg></button></div></div></article>`;}
 function appsPage(){let list=state.apps.filter(x=>!x.disabled).filter(x=>(x.name+' '+description(x)).toLowerCase().includes(state.search.toLowerCase())).sort((a,b)=>Number(state.favs.includes(b.slug))-Number(state.favs.includes(a.slug))||a.name.localeCompare(b.name,locale));const ready=state.apps.filter(x=>x.active_version&&!x.disabled).length;return `<section class="library-toolbar"><div class="library-intro"><p class="muted">${e(t('libraryIntro'))}</p><div class="library-summary"><span class="pill ok">● ${e(t('appsReady',{count:ready}))}</span><span class="small muted">${e(t('libraryCount',{count:state.apps.filter(x=>!x.disabled).length}))}</span></div></div><label class="searchbar">⌕ <input id="search" type="search" value="${e(state.search)}" placeholder="${e(t('Zoek applicaties'))}" aria-label="${e(t('Zoek applicaties'))}"></label></section>
  ${!state.appOriginConfigured?`<div class="alert">${e(t('Configureer een apart app-domein (CRAFT_SINGLE_APP_URL of CRAFT_APPS_DOMAIN) om WebAssembly-apps veilig gescheiden van het beheerdersportaal te openen.'))}</div>`:''}
- <div id="app-results">${list.length?`<div class="app-grid">${list.map(card).join('')}</div>`:`<div class="empty">${e(t(state.apps.length?'Geen applicaties gevonden.':'De eerste controle wordt uitgevoerd. Gecontroleerde apps verschijnen hier vanzelf.'))}</div>`}</div>`;}
+  <div id="app-results">${list.length?`<div class="app-grid">${list.map(card).join('')}</div>`:`<div class="empty">${e(t(state.apps.length?'Geen applicaties gevonden.':'De eerste controle wordt uitgevoerd. Gecontroleerde apps verschijnen hier vanzelf.'))}</div>`}</div>`;}
 function adminPage(){if(!state.admin)return `<div class="boot">${e(t("Beheerinformatie laden…"))}</div>`;const a=state.admin;const s=a.settings;return `<div class="stats"><div class="stat"><span class="upper">${e(t("Geïnstalleerde apps"))}</span><strong>${a.apps.filter(x=>x.active_version).length}</strong></div><div class="stat"><span class="upper">${e(t("Actieve download"))}</span><strong>${a.running?t("Ja"):t("Nee")}</strong></div><div class="stat"><span class="upper">${e(t("Schijfruimte"))}</span><strong>${fmtBytes(a.bytes)}</strong></div><div class="stat"><span class="upper">Accounts</span><strong>${a.users}</strong></div></div>
  <div id="admin-refresh-status" role="status">${state.adminError?`<div class="alert error">${e(t("Status vernieuwen mislukt."))} ${e(state.adminError)} <button class="secondary" id="retry-admin">${e(t("Opnieuw proberen"))}</button></div>`:''}</div>
  <section class="panel"><div id="update-summary"><div class="row between"><div><h2>Update Manager</h2><p class="small muted">${e(t("Laatste controle:"))} ${fmtTime(a.last_check)} · ${e(updaterResult(a.last_result))}</p></div><button class="primary" id="run-update" ${a.running?'disabled':''}>${a.running?t("⟳ Controle bezig"):t("⟳ Nu controleren")}</button></div>${a.running?`<p class="small muted mt-10" role="status">${e(t("Officiële releases worden gecontroleerd en waar nodig geïnstalleerd. Dit kan enkele minuten duren."))}</p><progress class="update-progress" aria-label="${e(t("Updatecontrole bezig"))}"></progress>`:''}</div>
@@ -74,13 +74,61 @@ function adminPage(){if(!state.admin)return `<div class="boot">${e(t("Beheerinfo
  <div><button class="secondary" type="submit">${e(t("Instellingen opslaan"))}</button></div></form></section>
  <section class="panel" id="app-management"><div class="section-head"><div><h2>${e(t("Applicatiebeheer"))}</h2><p class="small muted">${e(t("Versies, foutmeldingen en terugrollen"))}</p></div></div><div class="table-wrap"><table><thead><tr><th>${e(t("Applicatie"))}</th><th>${e(t("Actieve versie"))}</th><th>${e(t("Laatste release"))}</th><th>Status</th><th>${e(t("Beheer"))}</th></tr></thead><tbody>${a.apps.map(x=>`<tr><td><strong>${e(x.slug)}</strong>${x.last_error?`<p class="tiny text-error">${e(errorMessage(x.last_error))}</p>`:''}</td><td>${e(x.active_version||'—')}</td><td>${e(x.latest_version||'—')}</td><td><span class="status"><span class="dot ${x.last_error?'warn':!x.active_version?'bad':''}"></span>${x.disabled?t("Uit"):x.active_version?t("Gereed"):t("Wachten")}</span></td><td><div class="row"><button class="mini" data-versions="${e(x.slug)}" title="${e(t("Versies"))}" aria-label="${e(t("versionsOf",{name:x.slug}))}">◷</button><button class="mini" data-pause="${e(x.slug)}" data-paused="${x.auto_update}" title="${e(t("Automatische updates pauzeren/hervatten"))}" aria-label="${e(t(x.auto_update?"pauseUpdates":"resumeUpdates",{name:x.slug}))}">${x.auto_update?'Ⅱ':'▶'}</button></div></td></tr>`).join('')}</tbody></table></div></section>
  <div class="notice">${e(t("Updates van WebAssembly-apps wijzigen geen persoonlijke bestanden op de server. Sommige Craft-apps bewaren documenten alleen in de browser. Maak waar nodig apart back-ups."))}</div>`;}
-function usersPage(){if(!state.multiUser)return `<div class="panel"><h2>${e(t("Een veilige single-userinstallatie"))}</h2><p class="muted mt-10">${e(t("Extra accounts zijn nog niet toegestaan. De ArtCraft-apps bewaren browserdata per website, niet per ingelogde gebruiker. Configureer CRAFT_APPS_DOMAIN met wildcard-DNS en HTTPS om gebruikersaccounts veilig te scheiden."))}</p></div>`;
- return `<div class="panel"><h2>${e(t("Nieuw account"))}</h2><form id="new-user" class="stack mt-20"><div class="form-grid"><div class="field"><label for="new-username">${e(t("Gebruikersnaam"))}</label><input id="new-username" autocomplete="username" name="username" required minlength="3" maxlength="48"></div><div class="field"><label for="new-role">${e(t("Rol"))}</label><select id="new-role" name="role"><option value="user">${e(t("Gebruiker"))}</option><option value="admin">Administrator</option></select></div></div><div class="field"><label for="new-password">${e(t("Initieel wachtwoord (min. 12 tekens)"))}</label><input id="new-password" type="password" name="password" minlength="12" required autocomplete="new-password"></div><div><button class="primary">${e(t("Gebruiker toevoegen"))}</button></div></form></div><div id="users-list" class="panel">${e(t("Accounts laden…"))}</div>`;}
+function usersPage(){if(!state.multiUser)return `<div class="panel"><h2>${e(t("Een veilige single-userinstallatie"))}</h2><p class="muted mt-10">${e(t("workspace.enableAccounts"))}</p></div>`;
+ return `${state.appOriginMode==='shared'?`<div class="notice">${e(t('workspace.sharedStorage'))}</div>`:''}<div class="panel"><h2>${e(t("Nieuw account"))}</h2><form id="new-user" class="stack mt-20"><div class="form-grid"><div class="field"><label for="new-username">${e(t("Gebruikersnaam"))}</label><input id="new-username" autocomplete="username" name="username" required minlength="3" maxlength="48"></div><div class="field"><label for="new-role">${e(t("Rol"))}</label><select id="new-role" name="role"><option value="user">${e(t("Gebruiker"))}</option><option value="admin">Administrator</option></select></div></div><div class="field"><label for="new-password">${e(t("Initieel wachtwoord (min. 12 tekens)"))}</label><input id="new-password" type="password" name="password" minlength="12" required autocomplete="new-password"></div><div><button class="primary">${e(t("Gebruiker toevoegen"))}</button></div></form></div><div id="users-list" class="panel">${e(t("Accounts laden…"))}</div>`;}
 function eventsPage(){return `<div class="panel"><div class="section-head"><div><h2>${e(t("Systeemactiviteit"))}</h2><p class="small muted">${e(t("De laatste 120 gebeurtenissen"))}</p></div><button id="refresh-events" class="secondary">${e(t("Vernieuwen"))}</button></div><div id="events-list">${e(t("Laden…"))}</div></div>`;}
-function render(){if(!state.user){closeModal();root.innerHTML=authScreen();return;}root.innerHTML=shell(({apps:appsPage,admin:adminPage,users:usersPage,events:eventsPage})[state.page]()); if(state.page==='users'&&state.multiUser)refreshUsers();if(state.page==='events')refreshEvents();}
+function render(){if(!state.user){resetWorkspace();closeModal();root.innerHTML=authScreen();return;}root.innerHTML=shell(({apps:appsPage,admin:adminPage,users:usersPage,events:eventsPage})[state.page]()); if(state.page==='users'&&state.multiUser)refreshUsers();if(state.page==='events')refreshEvents();updateWorkspace();}
 async function refreshUsers(){try{const r=await api('/api/admin/users');const el=document.getElementById('users-list');if(!el)return;el.innerHTML=`<h2>Accounts</h2><div class="table-wrap"><table><thead><tr><th>${e(t("Gebruikersnaam"))}</th><th>${e(t("Rol"))}</th><th>Status</th><th>${e(t("Actie"))}</th></tr></thead><tbody>${r.users.map(u=>`<tr><td>${e(u.username)}</td><td>${e(t(u.role==='admin'?'Administrator':'Gebruiker'))}</td><td>${u.enabled?t("Actief"):t("Uitgeschakeld")}</td><td>${u.enabled&&u.id!==state.user.id?`<button class="danger" data-disable-user="${u.id}">${e(t("Uitschakelen"))}</button>`:'—'}</td></tr>`).join('')}</tbody></table></div>`;}catch(ex){toast(ex instanceof TypeError?t("Kan geen verbinding maken met Craft Portal. Controleer je server of vernieuw de pagina."):ex.message,true);}}
 async function refreshEvents(){try{const r=await api('/api/admin/events');const el=document.getElementById('events-list');if(!el)return;el.innerHTML=`<div class="table-wrap"><table><thead><tr><th>${e(t("Tijd"))}</th><th>${e(t("Niveau"))}</th><th>${e(t("Gebeurtenis"))}</th><th>Details</th></tr></thead><tbody>${r.events.map(x=>`<tr><td>${fmtTime(x.at)}</td><td>${e(t(x.level))}</td><td>${e(t(x.action))} ${x.slug?`· ${e(x.slug)}`:''}</td><td>${e(updaterResult(x.detail))}</td></tr>`).join('')}</tbody></table></div>`;}catch(ex){toast(ex instanceof TypeError?t("Kan geen verbinding maken met Craft Portal. Controleer je server of vernieuw de pagina."):ex.message,true);}}
-async function openApp(slug){const {url}=await api(`/api/apps/${encodeURIComponent(slug)}/launch`,{method:'POST'});window.open(url,'_blank','noopener,noreferrer');}
+const workspace=document.createElement('section');
+workspace.id='workspace';workspace.hidden=true;document.body.append(workspace);
+const sessions=new Map();let activeApp=null;let workspaceGeneration=0;
+function resetWorkspace(){workspaceGeneration++;for(const session of sessions.values())session.frame.remove();sessions.clear();activeApp=null;workspace.replaceChildren();workspace.hidden=true;root.inert=false;document.body.classList.remove('workspace-visible','has-dock');}
+function reconcileWorkspace(){for(const [slug,session] of sessions){if(!state.apps.some(app=>app.slug===slug&&!app.disabled&&app.active_version)){session.frame.remove();sessions.delete(slug);if(activeApp===slug)activeApp=null;}}if(state.user)updateWorkspace();}
+function appMark(app){return `<span class="dock-icon" aria-hidden="true">${artwork(app.slug)}</span>`;}
+function updateWorkspace(){
+ if(!state.user)return;
+ const focused=document.activeElement?.tagName==='BUTTON'&&workspace.contains(document.activeElement)?{action:document.activeElement.dataset.workspace,slug:document.activeElement.dataset.open}:null;
+ workspace.hidden=false;document.body.classList.add('has-dock');
+ if(!workspace.querySelector('.workspace-stage'))workspace.innerHTML=`<div class="workspace-stage" hidden><header class="workspace-toolbar"></header><div class="workspace-frames"></div></div><nav class="workspace-dock" aria-label="${e(t('workspace.dock'))}"></nav>`;
+ const stage=workspace.querySelector('.workspace-stage');stage.hidden=!activeApp;
+ document.body.classList.toggle('workspace-visible',!!activeApp);root.inert=!!activeApp;
+ for(const [slug,session] of sessions)session.frame.hidden=slug!==activeApp;
+ const app=state.apps.find(app=>app.slug===activeApp),session=sessions.get(activeApp);
+ const bar=workspace.querySelector('.workspace-toolbar');
+ bar.innerHTML=app?`<div><strong>${e(app.name)}</strong><span class="small muted workspace-status" role="status">${e(t(session?.status||'workspace.starting'))}</span></div><div class="workspace-actions"><button class="secondary" data-workspace="home">${e(t('workspace.library'))}</button><button class="secondary" data-workspace="separate">${e(t('workspace.separate'))}</button><button class="secondary" data-workspace="retry">${e(t('workspace.retry'))}</button><button class="danger" data-workspace="close">${e(t('workspace.close'))}</button></div>`:'';
+ workspace.querySelector('.workspace-dock').innerHTML=`<button class="dock-app dock-home ${!activeApp?'selected':''}" data-workspace="home" aria-label="${e(t('workspace.library'))}" aria-pressed="${!activeApp}"><span class="dock-icon" aria-hidden="true">▦</span><span>${e(t('workspace.library'))}</span></button>${state.apps.filter(app=>!app.disabled).map(app=>`<button class="dock-app ${activeApp===app.slug?'selected':''} ${sessions.has(app.slug)?'running':''}" data-open="${e(app.slug)}" ${app.active_version&&state.appOriginConfigured?'':'disabled'} aria-label="${e(app.name)}" aria-pressed="${activeApp===app.slug}" title="${e(app.name)}">${appMark(app)}<span>${e(app.name)}</span></button>`).join('')}`;
+ if(focused){const buttons=[...workspace.querySelectorAll('button')];(buttons.find(button=>focused.action?button.dataset.workspace===focused.action:button.dataset.open===focused.slug)||workspace.querySelector('.dock-app.selected'))?.focus();}
+ else if(activeApp&&root.contains(document.activeElement))workspace.querySelector('.dock-app.selected')?.focus();
+}
+async function openSeparately(slug){const {url}=await api(`/api/apps/${encodeURIComponent(slug)}/launch`,{method:'POST'});window.open(url,'_blank','noopener,noreferrer');}
+async function openApp(slug){
+ const app=state.apps.find(app=>app.slug===slug&&!app.disabled&&app.active_version);if(!app||!state.user)return;
+ if(sessions.has(slug)){activeApp=slug;updateWorkspace();return;}
+ if(sessions.size>=4){toast(t('workspace.limit'),true);return;}
+ const generation=workspaceGeneration;
+ // Reserve a frame before the request so rapid repeated clicks cannot launch duplicates.
+ const frame=document.createElement('iframe');frame.title=app.name;frame.hidden=true;
+ frame.setAttribute('sandbox','allow-scripts allow-same-origin allow-forms allow-downloads allow-pointer-lock');
+ frame.setAttribute('allow','cross-origin-isolated; fullscreen; clipboard-read; clipboard-write');frame.referrerPolicy='no-referrer';
+ const session={frame,origin:null,status:'workspace.starting'};sessions.set(slug,session);activeApp=slug;updateWorkspace();workspace.querySelector('.workspace-frames').append(frame);
+ try{
+  const result=await api(`/api/apps/${encodeURIComponent(slug)}/launch?embedded=true`,{method:'POST'});
+  if(generation!==workspaceGeneration||sessions.get(slug)!==session)return;
+  const url=new URL(result.url);if(url.origin!==result.origin||result.slug!==slug||!result.embedded||!['http:','https:'].includes(url.protocol))throw new Error(t('workspace.failed'));
+  session.origin=url.origin;frame.src=url.href;
+  session.status='workspace.compatibility';updateWorkspace();
+ }catch(error){if(generation===workspaceGeneration&&sessions.get(slug)===session){session.status='workspace.failed';updateWorkspace();}throw error;}
+}
+window.addEventListener('message',event=>{
+ for(const [slug,session] of sessions){
+  if(!session.origin||event.origin!==session.origin||event.source!==session.frame.contentWindow||event.data?.slug!==slug)continue;
+  if(event.data.type==='craft-bridge-error'){session.status='workspace.failed';updateWorkspace();}
+  else if(event.data.type==='craft-bridge-navigating'){session.status='workspace.compatibility';updateWorkspace();}
+ }
+});
+window.addEventListener('beforeunload',event=>{if(sessions.size){event.preventDefault();event.returnValue='';}});
+
 function preferredInstaller(assets){
  const ua=navigator.userAgent.toLowerCase();
  let pattern = ua.includes('windows') ? /windows-x64\.msi$/ : ua.includes('mac') ? /macos-universal\.dmg$/ : /linux-x86_64\.AppImage$/;
@@ -89,7 +137,7 @@ function preferredInstaller(assets){
 let modalOpener=null;
 function closeModal(){
  document.querySelector('.modal-back')?.remove();
- root.inert=false;
+ root.inert=!!activeApp;workspace.inert=false;
  document.body.classList.remove('modal-open');
  if(modalOpener?.isConnected)modalOpener.focus();
  else if(modalOpener){const heading=root.querySelector('h1');if(heading){heading.tabIndex=-1;heading.focus();}}
@@ -98,7 +146,7 @@ function closeModal(){
 function showModal(el){
  closeModal();
  modalOpener=document.activeElement;
- root.inert=true;
+ root.inert=true;workspace.inert=true;
  document.body.classList.add('modal-open');
  document.body.append(el);
  el.querySelector('#close-modal').focus();
@@ -161,10 +209,11 @@ root.addEventListener('input', event=>{if(event.target.id==='search'){
  if(results)results.innerHTML=apps.length?`<div class="app-grid">${apps.map(card).join('')}</div>`:`<div class="empty" role="status">${e(t("Geen applicaties gevonden."))}</div>`;
 }});
 document.addEventListener('click',async event=>{
- const target=event.target.closest('button');if(!target||(!root.contains(target)&&!target.closest('.modal-back')))return;
+ const target=event.target.closest('button');if(!target||(!root.contains(target)&&!workspace.contains(target)&&!target.closest('.modal-back')))return;
  try{
-  if(target.dataset.page){state.page=target.dataset.page;if(state.page==='admin')await loadAdmin();render();const heading=root.querySelector('h1');heading.tabIndex=-1;heading.focus();}
-  else if(target.id==='logout'){await api('/api/logout',{method:'POST'});state.user=null;state.csrf=null;state.admin=null;state.page='apps';render();}
+  if(target.dataset.workspace){const action=target.dataset.workspace;if(action==='home'){activeApp=null;updateWorkspace();}else if(action==='separate'){await openSeparately(activeApp);}else if(['close','retry'].includes(action)&&confirm(t('workspace.confirmClose'))){const slug=activeApp;sessions.get(slug)?.frame.remove();sessions.delete(slug);activeApp=null;updateWorkspace();if(action==='retry')await openApp(slug);}}
+  else if(target.dataset.page){state.page=target.dataset.page;if(state.page==='admin')await loadAdmin();render();const heading=root.querySelector('h1');heading.tabIndex=-1;heading.focus();}
+  else if(target.id==='logout'){if(sessions.size&&!confirm(t('workspace.confirmLogout')))return;await api('/api/logout',{method:'POST'});state.user=null;state.csrf=null;state.admin=null;state.page='apps';resetWorkspace();render();}
   else if(target.dataset.fav){const slug=target.dataset.fav;state.favs=state.favs.includes(slug)?state.favs.filter(x=>x!==slug):[...state.favs,slug];saveFaves();render();root.querySelectorAll('[data-fav]').forEach(button=>{if(button.dataset.fav===slug)button.focus();});}
   else if(target.dataset.open){await openApp(target.dataset.open);}
   else if(target.dataset.download){await downloads(target.dataset.download);}
@@ -201,7 +250,23 @@ async function refreshAdmin(){
  }catch(ex){if(state.user)state.adminError=ex.message;}
  finally{state.polling=false;updateAdminView();}
 }
+let checkingWorkspaceSession=false;
+async function checkWorkspaceSession(){
+ if(!state.user||!sessions.size||checkingWorkspaceSession)return;
+ checkingWorkspaceSession=true;
+ const generation=workspaceGeneration;
+ try{
+  const bootstrap=await api('/api/bootstrap',{auth:false});
+  if(generation!==workspaceGeneration)return;
+  if(!bootstrap.user||bootstrap.user.public_id!==state.user?.public_id){resetWorkspace();await init();return;}
+  // Preserve live frames, focused controls and unsaved portal forms for the same account.
+  state.csrf=bootstrap.csrf;
+ }catch{ /* A transient network error does not establish a session change. */ }
+ finally{checkingWorkspaceSession=false;}
+}
 setInterval(async()=>{
+ if(!state.user)return;
+ await checkWorkspaceSession();
  if(!state.user)return;
  if(state.page==='admin'){await refreshAdmin();return;}
  if(state.page==='apps'){

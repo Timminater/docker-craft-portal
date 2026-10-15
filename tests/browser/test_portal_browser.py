@@ -90,7 +90,7 @@ def browser(request):
         if name == "chromium":
             options["args"] = ["--host-resolver-rules=MAP *.example.test 127.0.0.1", "--no-proxy-server"]
         else:
-            options["firefox_user_prefs"] = {"network.dns.localDomains": "portal.example.test,photocraft--000000000001.apps.example.test,photocraft--000000000002.apps.example.test"}
+            options["firefox_user_prefs"] = {"network.dns.localDomains": "portal.example.test,apps.example.test,photocraft--000000000001.apps.example.test,photocraft--000000000002.apps.example.test"}
         # An existing system Chromium avoids downloading a second browser in restricted environments.
         executable = os.getenv("CRAFT_CHROMIUM_EXECUTABLE") or shutil.which("chromium")
         if name == "chromium" and executable:
@@ -114,10 +114,13 @@ def login(page, origin):
 
 
 def launch(page):
+    page.locator('#app [data-open="photocraft"]').click()
     with page.expect_popup() as opened:
-        page.locator('[data-open="photocraft"]').click()
+        page.locator('[data-workspace="separate"]').click()
     app_page = opened.value
     app_page.get_by_text('WASM ready', exact=True).wait_for()
+    page.once('dialog', lambda dialog: dialog.accept())
+    page.locator('[data-workspace="close"]').click()
     return app_page
 
 
@@ -261,8 +264,9 @@ def test_multiuser_browser_origin_isolation(browser, tmp_path):
                 page.locator('#password').fill('browser-test strong password!')
                 page.locator('#auth-form button').click()
                 page.get_by_role('heading',name='Mijn applicaties',exact=True).wait_for()
+                page.locator('#app [data-open="photocraft"]').click()
                 with page.expect_popup() as opened:
-                    page.locator('[data-open="photocraft"]').click()
+                    page.locator('[data-workspace="separate"]').click()
                 app_page = opened.value
                 app_page.get_by_role('heading',name='Isolated application').wait_for()
                 launched.append(app_page)

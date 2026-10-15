@@ -11,7 +11,8 @@ not external certification or proof that upstream app code is benign.
 | Browser to portal | Exact configured Host, origin + first-party header, per-session CSRF, 64 KiB actual streamed body limit | Security and origin regression tests; proxy must preserve Host and limit slow requests |
 | Password to account | Argon2id; bounded credential fields; generic login failures; setup code invalidated atomically | Setup/login tests; first-start code exists only in private logs |
 | Portal session to app | Different hostname; single-use 45-second launch ticket in fragment; HttpOnly scoped cookie | Browser authenticated WASM load; app session requires live same-user portal parent |
-| Account/app to another account/app | Exact slug and user-public-ID hostname plus matching app-session scope | Two-account Chromium HTTPS test; server-side security tests |
+| Isolated account/app to another account/app | Exact slug and user-public-ID hostname plus matching app-session scope | Wildcard-mode Chromium HTTPS and server tests remain enforced |
+| Explicit shared apphost mode | Multiple accounts share one app origin, with per-slug server authorization and live parent-session checks | Owner accepted separate OS/browser profiles; accounts within one browser profile deliberately share OPFS/IndexedDB/localStorage |
 | Release metadata to network | Exact HTTPS hosts and port 443; API token only for GitHub API; redirects remove authorization outside API | Redirect tests; proxy/TLS remain enabled; optional GitHub binding must be deployment-managed |
 | Download to installed code | Expected publisher/name/URL, bounded size, required SHA-256, ZIP traversal/link/collision/ratio checks | Fake-download tests prove failed digest/interruption preserve active release; genuine upstream check blocked by egress policy |
 | Staging to activation/rollback | Separate temporary extraction, atomic directory activation, SQLite pointer transaction; serialized update/rollback/prune | Retention and concurrency tests; manual rollback pauses automatic updates |
@@ -29,7 +30,7 @@ not external certification or proof that upstream app code is benign.
   copies. Logout revokes **server** access; a hostile or offline app may still
   display previously obtained local data. Use separate browser profiles on
   shared devices and test each real app's offline behavior.
-* Single-user mode shares one app origin among apps; choose wildcard multi-user
+* Single-user mode and explicit shared-host multi-user share one app origin among apps; choose wildcard multi-user
   mode for per-account/per-app browser storage separation. Do not change origins
   without planning browser document export/migration.
 * Login/setup limits are process-local. Use one application worker and edge
@@ -46,3 +47,28 @@ not external certification or proof that upstream app code is benign.
 * CI is configured for both CPU architectures and browser engines. Configuring
   jobs does not prove a hosted run or release publication succeeded. Pin deployed
   image digests and complete the acceptance gates before tagging a release.
+
+## Embedded workspace update
+
+The owner explicitly authorized `CRAFT_SHARED_APP_MULTI_USER=true` under the
+separate-OS/browser-profile assumption. This changes the browser-data boundary,
+not server account authorization. The opt-in cannot be combined with wildcard
+mode and requires a distinct app host. It must never be presented as per-account
+OPFS isolation within one profile.
+
+The portal enables COOP/COEP and allows framing only configured app origins.
+App documents allow ancestors only at the configured portal. The sandbox allows
+app execution/storage but excludes top navigation; bridge messages carry status
+only and are matched by exact origin, source frame and slug. App workers inherit
+the isolation policy needed for SharedArrayBuffer. A browser test creates a real
+worker and verifies that shared memory works, rather than relying on headers alone.
+Portal JavaScript cannot inspect app iframe contents across origins; iframe
+loading success does not establish compatibility with arbitrary upstream apps.
+
+Frames remain mounted across app/navigation changes, with a four-frame limit and
+explicit save confirmations. They are destroyed on logout/session revocation,
+identity change or app disablement. Periodic session checks preserve focus and
+unsaved forms when identity stays the same. Server revocation cannot erase browser
+documents, service-worker caches or state in an independently opened app tab.
+Same-site HTTPS app hosts are recommended for the retained cookie policy; other
+setups use the separate-window fallback instead of weakening cookie settings.

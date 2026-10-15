@@ -155,13 +155,13 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
 
     app.state.cfg,app.state.db,app.state.auth,app.state.updater = cfg,db,auth,updater
     single_host = urlparse(cfg.single_app_url).netloc.lower() if cfg.single_app_url else ""
-    app_host = re.compile(rf"^(?P<slug>[a-z][a-z0-9]{{1,29}}craft)--(?P<publicid>[0-9a-f]{{12}})\.{re.escape(cfg.apps_domain)}$",re.I) if cfg.multi_user else None
+    app_host = re.compile(rf"^(?P<slug>[a-z][a-z0-9]{{1,29}}craft)--(?P<publicid>[0-9a-f]{{12}})\.{re.escape(cfg.apps_domain)}$",re.I) if cfg.isolated_app_origins else None
 
     def host_type(request: Request):
         host = request.headers.get("host","").lower().rstrip(".")
         if host == cfg.portal_host:
             return ("portal",None,None)
-        if single_host and host == single_host and not cfg.multi_user:
+        if single_host and host == single_host and not cfg.isolated_app_origins:
             return ("single_app",None,None)
         if app_host:
             m=app_host.fullmatch(host)
@@ -188,8 +188,18 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         response.headers["Referrer-Policy"]="no-referrer"
         response.headers["Permissions-Policy"]="camera=(), geolocation=()"
         if kind=="portal":
-            response.headers["Content-Security-Policy"]="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+            frame_source = f"https://*.{cfg.apps_domain}" if cfg.isolated_app_origins else (cfg.single_app_url or "'none'")
+            response.headers["Content-Security-Policy"]=f"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; frame-src {frame_source}"
             response.headers["X-Frame-Options"]="DENY"
+            response.headers["Cross-Origin-Opener-Policy"]="same-origin"
+            response.headers["Cross-Origin-Embedder-Policy"]="require-corp"
+        elif kind in {"app", "single_app"}:
+            response.headers["Content-Security-Policy"] = f"frame-ancestors {cfg.public_url}"
+            # Embedded documents and their workers inherit the isolated workspace
+            # contract. Preserve standalone documents for non-isolated apps.
+            if request.headers.get("sec-fetch-dest") in {"iframe", "worker", "sharedworker", "serviceworker"}:
+                response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+            response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
         return response
 
     def portal_only(request: Request):
@@ -232,7 +242,8 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
     async def index(request: Request):
         kind,slug,_ = host_type(request)
         if kind in {"app", "single_app"}:
-            return HTMLResponse((STATIC/"bridge.html").read_text(),headers={"Cache-Control":"no-store"})
+            bridge = (STATIC/"bridge.html").read_text().replace("</head>", f'<meta name="craft-portal-origin" content="{html.escape(cfg.public_url, quote=True)}"></head>')
+            return HTMLResponse(bridge,headers={"Cache-Control":"no-store"})
         if kind!="portal": raise HTTPException(404)
         return FileResponse(STATIC/"index.html",headers={"Cache-Control":"no-store"})
 
@@ -289,13 +300,14 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         if not sess or (kind == "app" and sess["public_id"] != public_id): raise HTTPException(401)
         row = db.one("SELECT active_version,disabled FROM apps WHERE slug=?", (slug,))
         if not row or not row["active_version"] or row["disabled"]: raise HTTPException(404)
-        return JSONResponse({"version": row["active_version"]}, headers={"Cache-Control":"no-store"})
+        path = f"/v/{row['active_version']}/" if kind == "app" else f"/a/{slug}/v/{row['active_version']}/"
+        return JSONResponse({"version": row["active_version"], "path": path}, headers={"Cache-Control":"no-store"})
 
     @app.get("/api/bootstrap")
     async def bootstrap(request: Request):
         portal_only(request)
         s=auth.get_session(read_cookie(request, PORTAL_COOKIE),"portal")
-        return {"setup_required":auth.setup_required(),"user":format_user(s) if s else None,"csrf":auth.csrf(s) if s else None,"multi_user":cfg.multi_user,"app_origin_configured":cfg.app_origin_configured}
+        return {"setup_required":auth.setup_required(),"user":format_user(s) if s else None,"csrf":auth.csrf(s) if s else None,"multi_user":cfg.multi_user,"app_origin_configured":cfg.app_origin_configured,"app_origin_mode":cfg.app_origin_mode,"app_origin":cfg.single_app_url or None}
 
     @app.post("/api/setup")
     def setup(request:Request,payload:FirstSetup):
@@ -349,21 +361,22 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         return {"assets":db.all("SELECT name,url FROM release_assets WHERE slug=? ORDER BY name",(slug,)),"github":f"https://github.com/{cfg.trusted_owner}/{slug}/releases"}
 
     @app.post("/api/apps/{slug}/launch")
-    async def launch(slug:str,request:Request,s:dict=Depends(session)):
+    async def launch(slug:str,request:Request,embedded:bool=False,s:dict=Depends(session)):
         changing(request,s)
         app_record=db.one("SELECT active_version,disabled FROM apps WHERE slug=?",(slug,))
         if not app_record or not app_record["active_version"] or app_record["disabled"]:
             raise HTTPException(404,"Application is not ready")
         if not cfg.app_origin_configured:
             raise HTTPException(409,"Configure a separate CRAFT_SINGLE_APP_URL or CRAFT_APPS_DOMAIN before launching apps")
-        version=app_record["active_version"]
-        if cfg.multi_user:
+        if cfg.isolated_app_origins:
             ticket=auth.new_ticket(s,slug)
             url=f"https://{slug}--{s['public_id']}.{cfg.apps_domain}/#ticket={ticket}&slug={slug}"
         else:
             ticket=auth.new_ticket(s,slug)
             url=f"{cfg.single_app_url}/#ticket={ticket}&slug={slug}"
-        return {"url":url}
+        if embedded:
+            url += "&embedded=1"
+        return {"url":url,"origin":url.split("/#",1)[0],"slug":slug,"embedded":embedded}
 
     @app.get("/api/admin/status")
     def status(request:Request,s:dict=Depends(admin_session)):
@@ -429,7 +442,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
     def create_user(request:Request,payload:UserInput,s:dict=Depends(admin_session)):
         changing(request,s)
         if not cfg.multi_user:
-            raise HTTPException(400,"Additional users require CRAFT_APPS_DOMAIN and wildcard TLS")
+            raise HTTPException(400,"Additional users require isolated origins or explicit CRAFT_SHARED_APP_MULTI_USER opt-in")
         try: user_id=auth.create_user(payload.username,payload.password,payload.role)
         except Exception as exc:
             if "UNIQUE constraint" in str(exc): raise HTTPException(409,"Username already in use") from exc
@@ -455,11 +468,11 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         if not SLUG.fullmatch(slug) or not TAG.fullmatch(version): raise HTTPException(404)
         kind,host_slug,public_id = host_type(request)
         if mode == "single":
-            if cfg.multi_user or kind!="single_app": raise HTTPException(404)
+            if cfg.isolated_app_origins or kind!="single_app": raise HTTPException(404)
             s=auth.get_session(read_cookie(request, f"{APP_COOKIE}_{slug}"),"app",slug)
             if not s: raise HTTPException(401,"Open this app from Craft Portal")
         else:
-            if not cfg.multi_user or kind!="app" or host_slug!=slug: raise HTTPException(404)
+            if not cfg.isolated_app_origins or kind!="app" or host_slug!=slug: raise HTTPException(404)
             s=auth.get_session(read_cookie(request, APP_COOKIE),"app",slug)
             if not s or s["public_id"]!=public_id: raise HTTPException(401,"Open this app from Craft Portal")
         row=db.one("SELECT active_version,disabled FROM apps WHERE slug=?",(slug,))
@@ -472,7 +485,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         headers={"Cache-Control":"no-store"}
         # Web GPU + selected media workflows require a secure origin (configured via reverse proxy).
         if slug in {"filmcraft","effectcraft","lightcraft"}:
-            headers.update({"Cross-Origin-Opener-Policy":"same-origin", "Cross-Origin-Embedder-Policy":"require-corp", "Cross-Origin-Resource-Policy":"same-origin"})
+            headers.update({"Cross-Origin-Opener-Policy":"same-origin", "Cross-Origin-Embedder-Policy":"require-corp", "Cross-Origin-Resource-Policy":"cross-origin"})
         return FileResponse(file,headers=headers)
 
     @app.get("/a/{slug}/v/{version}/")
