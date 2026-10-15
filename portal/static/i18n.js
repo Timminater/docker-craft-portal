@@ -3,6 +3,8 @@
 (() => {
  const dictionaries = {
   "en": {
+    "Parametrisch 3D-ontwerp en modelleren": "Parametric 3D design and modeling",
+    "summary.solid": "Sketch, constrain and build parametric 3D models.",
     "order.title": "Arrange applications",
     "order.help": "Drag apps or use the arrows. Your saved order applies to the cards and dock on every device.",
     "order.up": "Move {name} earlier",
@@ -233,6 +235,8 @@
     "CAD": "CAD"
   },
   "nl": {
+    "Parametrisch 3D-ontwerp en modelleren": "Parametrisch 3D-ontwerp en modelleren",
+    "summary.solid": "Schets en bouw parametrische 3D-modellen.",
     "order.title": "Volgorde aanpassen",
     "order.help": "Sleep apps of gebruik de pijlen. Je opgeslagen volgorde geldt voor kaarten en dock op elk apparaat.",
     "order.up": "{name} naar voren",

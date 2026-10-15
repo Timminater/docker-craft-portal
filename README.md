@@ -157,3 +157,8 @@ Portal starter code is offered under the MIT license. This repository does **not
 The compact workspace dock uses official Craft app icons and card heroes, cached
 locally from getartcraft.com with offline fallbacks. See [workspace setup and TLS
 troubleshooting](docs/workspace.md) for app-host connection errors and artwork behavior.
+
+SolidCraft is also supported through the explicitly selected
+[`bherbruck/solidcraft`](https://github.com/bherbruck/solidcraft) release repository.
+It installs as a self-hosted WASM app with the same launch, update, rollback and
+personal-order controls. See [SolidCraft integration](docs/solidcraft.md).

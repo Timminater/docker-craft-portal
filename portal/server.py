@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .artwork import Artwork, KINDS
+from .sources import app_owner
 from .auth import APP_COOKIE, PORTAL_COOKIE, Auth, digest
 from .config import Config
 from .database import Database
@@ -404,7 +405,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         app_record=db.one("SELECT * FROM apps WHERE slug=?",(slug,))
         if not app_record or (app_record["disabled"] and s["role"]!="admin"):
             raise HTTPException(404)
-        return {"assets":db.all("SELECT name,url FROM release_assets WHERE slug=? ORDER BY name",(slug,)),"github":f"https://github.com/{cfg.trusted_owner}/{slug}/releases"}
+        return {"assets":db.all("SELECT name,url FROM release_assets WHERE slug=? ORDER BY name",(slug,)),"github":f"https://github.com/{app_owner(slug,cfg.trusted_owner)}/{slug}/releases"}
 
     @app.post("/api/apps/{slug}/launch")
     async def launch(slug:str,request:Request,embedded:bool=False,s:dict=Depends(session)):
@@ -528,9 +529,11 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         base=(cfg.data_dir/"apps"/slug/"versions"/version).resolve()
         file=(base/(asset or "index.html")).resolve()
         if not file.is_relative_to(base) or not file.is_file(): raise HTTPException(404)
+        if slug == "solidcraft" and (asset == "sw.js" or request.headers.get("sec-fetch-dest") == "serviceworker"):
+            raise HTTPException(404)
         headers={"Cache-Control":"no-store"}
         # Web GPU + selected media workflows require a secure origin (configured via reverse proxy).
-        if slug in {"filmcraft","effectcraft","lightcraft"}:
+        if slug in {"filmcraft","effectcraft","lightcraft","solidcraft"}:
             headers.update({"Cross-Origin-Opener-Policy":"same-origin", "Cross-Origin-Embedder-Policy":"require-corp", "Cross-Origin-Resource-Policy":"cross-origin"})
         return FileResponse(file,headers=headers)
 

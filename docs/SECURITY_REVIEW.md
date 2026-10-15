@@ -85,3 +85,17 @@ attribution. Artwork networking is optional; unavailable artwork returns a local
 200 fallback without loosening the portal's self-only image CSP. A separate
 read-only review found no concrete blockers. TLS/SNI deployment failures occur
 before these HTTP routes and cannot be remediated by their authentication policy.
+
+## Explicit SolidCraft publisher
+
+The user authorized bherbruck/solidcraft specifically. An exact source registry
+keeps this separate from the official catalog; neither arbitrary GitHub owners
+nor other repositories of this owner gain trust. Metadata and original archive
+digests remain verified, with the same staged activation and safe ZIP rules.
+The SolidCraft HTML adaptation recognizes one standalone offline registration
+script; unknown registration code aborts staging. Authenticated service-worker
+routes are blocked, while normal worker requests retain their existing controls.
+Native release links resolve to the actual configured publisher. Artwork comes
+from pinned, licensed upstream source files and stays portal-authenticated.
+Independent read-only review found no concrete blockers. Shared-origin browser
+storage retains the previously documented profile boundary for all hosted apps.

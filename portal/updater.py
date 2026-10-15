@@ -21,6 +21,8 @@ import zipfile
 
 from .config import Config
 from .database import Database
+from .hosting import solidcraft_index
+from .sources import EXTRA_APPS, app_owner
 
 LOG = logging.getLogger(__name__)
 SLUG = re.compile(r"^[a-z][a-z0-9]{1,29}craft$")
@@ -232,7 +234,10 @@ class Updater:
 
     def download(self,url: str, expected_size: int, expected_digest: str, destination: Path):
         p = urlparse(url)
-        if p.scheme!="https" or p.hostname!="github.com" or p.port not in (None,443) or p.username or p.password or not p.path.startswith(f"/{self.cfg.trusted_owner}/"):
+        additional = bool(re.fullmatch(r"/bherbruck/solidcraft/releases/download/v[0-9]+\.[0-9]+\.[0-9]+/solidcraft-web-[0-9]+\.[0-9]+\.[0-9]+\.zip", p.path))
+        if (p.scheme!="https" or p.hostname!="github.com" or p.port not in (None,443)
+                or p.username or p.password or p.query or p.fragment
+                or not (p.path.startswith(f"/{self.cfg.trusted_owner}/") or additional)):
             raise InstallError("Untrusted asset URL")
         headers = {"User-Agent":"docker-craft-portal/0.1"}
         total=0; h=hashlib.sha256()
@@ -251,13 +256,15 @@ class Updater:
             raise InstallError("Release ZIP size or checksum mismatch")
 
     def sync_app(self,slug: str):
-        owner=self.cfg.trusted_owner
+        owner=app_owner(slug,self.cfg.trusted_owner)
         api=f"https://api.github.com/repos/{owner}/{slug}/releases/latest"
         release=json.loads(self.request(api))
         parsed=parse_release(slug,release,owner)
         version=parsed["version"]
         known=self.db.one("SELECT * FROM apps WHERE slug=?",(slug,))
-        name,description = DESCRIPTIONS.get(slug,(slug.removesuffix("craft").capitalize()+"Craft","Creative application"))
+        extra = EXTRA_APPS.get(slug)
+        name,description = ((extra["name"], extra["description"]) if extra else
+                            DESCRIPTIONS.get(slug,(slug.removesuffix("craft").capitalize()+"Craft","Creative application")))
         with self.db.tx() as con:
             con.execute("INSERT OR IGNORE INTO apps(slug,name,description,updated_at) VALUES(?,?,?,?)",(slug,name,description,time.time()))
             con.execute("UPDATE apps SET latest_version=?,updated_at=? WHERE slug=?",(version,time.time(),slug))
@@ -293,6 +300,9 @@ class Updater:
                 asset=release["asset"]
                 self.download(asset["browser_download_url"],asset["size"],asset["digest"],zip_path)
                 unpack_archive(zip_path,tmp/"unpacked",slug,version,self.cfg.max_extracted_bytes)
+                if slug == 'solidcraft':
+                    index = tmp / 'unpacked' / 'index.html'
+                    index.write_text(solidcraft_index(index.read_text(encoding='utf-8')), encoding='utf-8')
                 if self.stop_event.is_set():
                     raise InstallError("Updater is shutting down")
                 os.replace(tmp/"unpacked",dest)
@@ -338,18 +348,28 @@ class Updater:
         try:
             self.last_check=time.time()
             self.db.log("info","check_started","Checking official app catalog")
-            page=self.request(self.cfg.catalog_url).decode("utf-8")
-            slugs=discover_slugs(page,self.cfg.catalog_url)
+            catalog_error = None
+            try:
+                page=self.request(self.cfg.catalog_url).decode("utf-8")
+                catalog_slugs=discover_slugs(page,self.cfg.catalog_url)
+            except Exception as exc:
+                # Additional exact repositories remain independent of catalog outages.
+                catalog_error = str(exc)
+                catalog_slugs = []
+                LOG.exception("Catalog check failed")
+                self.db.log("error","catalog_failed",catalog_error)
             existing={app["slug"] for app in self.db.all("SELECT slug FROM apps")}
+            slugs=sorted(set(catalog_slugs) | set(EXTRA_APPS))
             if self.db.setting("auto_discover_apps")!="true":
                 slugs=[x for x in slugs if x in existing]
             errors=[]; updates=0
             for slug in slugs:
                 if self.stop_event.is_set(): break
                 try:
-                    # Every app must appear on the official catalog with a link to its publisher repo.
-                    app_page=self.request(f"{self.cfg.catalog_url}/{slug}").decode("utf-8")
-                    verify_official_app_page(app_page,slug,self.cfg.catalog_url,self.cfg.trusted_owner)
+                    if slug not in EXTRA_APPS:
+                        # Original publishers still require the official catalog link.
+                        app_page=self.request(f"{self.cfg.catalog_url}/{slug}").decode("utf-8")
+                        verify_official_app_page(app_page,slug,self.cfg.catalog_url,self.cfg.trusted_owner)
                     status=self.sync_app(slug)
                     updates+=int(status=="updated")
                 except Exception as exc:
@@ -359,13 +379,10 @@ class Updater:
                     if self.db.one("SELECT slug FROM apps WHERE slug=?",(slug,)):
                         self.db.run("UPDATE apps SET last_error=?,status=CASE WHEN active_version IS NULL THEN 'error' ELSE 'ready' END WHERE slug=?",(str(exc)[:500],slug))
             self.last_result=f"{updates} updates; {len(errors)} errors"
+            if catalog_error is not None:
+                self.last_result = "Catalog check failed: " + catalog_error + "; " + self.last_result
             self.db.log("info","check_completed",self.last_result)
-            return True
-        except Exception as exc:
-            self.last_result="Catalog check failed: "+str(exc)
-            LOG.exception("Catalog check failed")
-            self.db.log("error","catalog_failed",str(exc))
-            return False
+            return catalog_error is None
         finally:
             self.running=False
             self.next_check=time.time()+max(1,min(168,int(self.db.setting("update_interval_hours"))))*3600

@@ -70,6 +70,15 @@ class Artwork:
                     return data, 'image/webp'
             except OSError:
                 pass
+            if slug == 'solidcraft':
+                try:
+                    with (self.static / slug / f'{kind}.png').open('rb') as bundled:
+                        data = bundled.read(MAX_BYTES + 1)
+                    if data.startswith(b'\x89PNG\r\n\x1a\n') and len(data) <= MAX_BYTES:
+                        return data, 'image/png'
+                except OSError:
+                    pass
+                return FALLBACK, 'image/svg+xml'
             if self.network and self.failures.get(key, 0) <= time.monotonic():
                 try:
                     data = self._fetch(slug, kind)
