@@ -1,0 +1,18 @@
+services:
+  craft-portal:
+    build: .  # replace with a published image when available
+    container_name: craft-portal
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: Europe/Amsterdam
+      CRAFT_PUBLIC_URL: http://localhost:8080  # change to your external HTTPS URL behind reverse proxy
+      # CRAFT_APPS_DOMAIN: apps.example.nl  # optional: multi-user requires wildcard DNS and HTTPS
+      # GITHUB_TOKEN: ""                 # optional; use a secret instead of committing a token
+    volumes:
+      - ./data:/data
+    # For Unraid: use an appdata folder writable by UID 10001, or override user: "99:100".
+    restart: unless-stopped
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
