@@ -31,10 +31,26 @@ jobs:
       - run: python -m playwright install --with-deps chromium firefox
       - name: Allow ephemeral TLS isolation fixture on port 443
         run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
-      - run: python -m pytest tests/browser -q
+      - run: python -m pytest tests/browser -q --junitxml="$RUNNER_TEMP/browser-results.xml"
         env:
           CRAFT_BROWSER_TESTS: '1'
           CRAFT_REQUIRE_BROWSERS: '1'
+      - name: Report browser failure details
+        if: failure()
+        run: |
+          python - <<'PYREPORT'
+          import os
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          report = Path(os.environ['RUNNER_TEMP']) / 'browser-results.xml'
+          if report.exists():
+              for case in ET.parse(report).iter('testcase'):
+                  for failure in list(case.findall('failure')) + list(case.findall('error')):
+                      message = (failure.text or failure.get('message', ''))[-6000:]
+                      message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                      name = case.get('name', 'browser').replace(',', '_').replace('\n', ' ')
+                      print(f'::error title={name}::{message}')
+          PYREPORT
   container-build:
     needs: [tests, browser]
     runs-on: ubuntu-24.04
