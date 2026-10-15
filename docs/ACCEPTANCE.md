@@ -26,6 +26,25 @@ and pass. It is not a test failure. Browser tests are opt-in locally; CI sets
 `CRAFT_REQUIRE_BROWSERS=1` so missing engines/dependencies fail instead of skip.
 Test certificates and synthetic app files never represent real upstream acceptance.
 
+## Hosted release validation
+
+The [v0.1.0-rc.1 workflow](https://github.com/Timminater/docker-craft-portal/actions/runs/38722248221)
+completed successfully on 2026-10-15: unit tests, strict Chromium/Firefox browser
+job, AMD64/ARM64 image builds, native hardened-container checks, GHCR publishing
+and GitHub prerelease creation all passed. This supersedes the earlier local-only
+Firefox/build/hosted-publication limitations below. It does not establish native
+ARM64 runtime or real ArtCraft browser compatibility.
+
+The public registry manifest was independently inspected and contains linux/amd64
+and linux/arm64. The published image was anonymously pulled and booted with the
+exact Unraid template security flags: first-run API, separate app origin, UID10001
+and persistent SQLite passed (named-volume surrogate; no actual Unraid host tested). The release's image index digest is
+`sha256:e37b88270937e506513d374e8ccac878e4292c7b3fa5ee8a14b3633e6b048b53`.
+The initial metadata action also produced a latest alias for this prerelease;
+install the explicit `v0.1.0-rc.1` tag. Future automatic latest tagging is disabled.
+The Unraid user template and installation guide are available on main under
+`unraid/` and `docs/unraid.md` (added after the immutable release tag).
+
 ## Reproduce
 
 From the checkout, use Python3.12 and Node for syntax checks:

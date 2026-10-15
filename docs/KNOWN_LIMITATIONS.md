@@ -27,12 +27,12 @@ Synthetic fixtures prove portal behavior, not compatibility with ArtCraft releas
   SHA-256 digest. Missing digests fail closed; do not bypass validation.
 - [ ] All real apps load HTML/JS/WASM and relative assets on authenticated version
   paths, including service workers, OPFS, COOP/COEP and WebGPU where required.
-- [ ] Chromium and Firefox real-app workflows pass. Local Firefox download was
-  blocked by the managed egress policy; both engines are configured in strict CI.
-- [ ] ARM64 image builds and runtime are tested. Local machine has no ARM64
-  QEMU/binfmt support. Hosted multiarch build configuration is not execution proof.
-- [ ] Hosted CI passes, followed by an intentional tagged release and verified
-  GHCR image digest. No production image or release has been published here.
+- [ ] Chromium and Firefox real-app workflows pass. Both synthetic browser workflows
+  passed in strict hosted CI; genuine upstream browser acceptance remains open.
+- [x] AMD64/ARM64 image builds passed in hosted release CI.
+- [ ] Native ARM64 runtime is tested on actual ARM64 hardware.
+- [x] Hosted CI passed, including strict Chromium/Firefox integration, followed
+  by v0.1.0-rc.1 prerelease and public GHCR publication. See ACCEPTANCE.md.
 - [ ] Real DNS/TLS and reverse proxy preserve Host and security headers, keep
   backend port private, and apply client rate limits. Test deployment certificate
   rotation and restore operations with the actual volume and operator identity.
