@@ -2,13 +2,17 @@
 
 Self-hosted, login-protected web portal for all *official* ArtCraft WebAssembly apps. **One Docker container**, no Linux desktop streaming, no per-app containers, no runtime Rust compilation. The release updater automatically discovers compatible new apps in the official [ArtCraft catalog](https://getartcraft.com/apps), downloads verified official release ZIPs, installs versions transactionally and retains the previous two releases.
 
-> **Stable release: v2026.10.15.0.** Authentication, updates, backups, Chromium/Firefox browser workflows and multiarchitecture builds have been checked. Real PhotoCraft and SolidCraft releases have also been exercised. App-specific compatibility and native ARM64 runtime verification are tracked in [acceptance evidence](docs/ACCEPTANCE.md) and [known limitations](docs/KNOWN_LIMITATIONS.md).
+> **Stable release: v2026.10.15.1.** Includes personal account security, browser storage information, dock selection and a version/update overview. Authentication, updates, backups, Chromium/Firefox browser workflows and multiarchitecture builds are release-gated. Real PhotoCraft and SolidCraft releases have also been exercised. App-specific compatibility and native ARM64 runtime verification are tracked in [acceptance evidence](docs/ACCEPTANCE.md) and [known limitations](docs/KNOWN_LIMITATIONS.md).
 
 ## Features already implemented
 
 - Responsive dark dashboard, favorites, app launch, native installer links from official GitHub Releases.
 - First-start admin provisioning via one-time code printed in private Docker logs; Argon2id password hashes, SQLite accounts and opaque revocable HttpOnly sessions.
 - User/admin roles, CSRF and Origin checks for state-changing APIs, basic in-memory login rate limiting, exact Host validation.
+- Personal account settings: password changes, owned device/session revocation and optional authenticator-based two-step verification with single-use recovery codes.
+- Browser storage estimates and persistent-storage requests on the actual app origin, with honest local-document backup guidance.
+- Account-specific app order and dock visibility; open hidden apps stay switchable until closed.
+- Portal version/release overview and live app updater phases/download progress. See [personal settings](docs/personal-settings.md).
 - Official catalog discovery every **6 hours**, automatic new-app addition and auto-updating stable WASM releases.
 - Checks trusted GitHub issuer/release ZIP name, download URL, digest and size; rejects suspicious ZIP paths, links and decompression bombs. Extracts into staging, activates atomically, keeps active + **2 previous versions**.
 - Admin UI for checks, version rollback, app auto-update pause, settings, accounts (multi-user only), logs and disk usage.

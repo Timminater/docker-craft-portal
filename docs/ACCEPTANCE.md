@@ -118,3 +118,32 @@ all apps, Firefox real-app support or the operator's DNS/proxy/TLS deployment.
 The live portal request is denied by the managed cloud proxy before navigation.
 The reported operator error `SSL_ERROR_UNRECOGNIZED_NAME_ALERT` occurs at TLS/SNI
 negotiation before the portal serves the app. See workspace.md for resolution.
+
+## Personal portal settings (2026-10-15, v2026.10.15.1)
+
+Local Python validation: 148 regular tests pass. Local browser validation:
+22 Chromium tests pass, 22 Firefox cases skip because the local Firefox binary
+is unavailable. Tagged release CI requires both engines; skips are not accepted
+there. JavaScript syntax checks include the new storage utility and translations.
+
+New browser acceptance covers Dutch/English password changes and session
+revocation, authenticator enrollment, recovery/authenticator login and disabling
+MFA, account-specific dock visibility, preserving hidden running app frames,
+explicit portal release checks, actual updater byte progress and a delayed
+old-session 401 after a fresh same-account login. Storage tests use real
+separate HTTPS origins, reject forged messages, retain document markers, group
+shared apps, reuse utility frames and clean them up on navigation/session expiry.
+Desktop and 390-pixel mobile layouts were visually inspected without horizontal
+overflow or unexpected JavaScript/console errors.
+
+Backend tests additionally cover recovery/TOTP single-use under concurrency,
+password-change/sign-in races, old-schema additive migration, repeated restart,
+CSRF/role boundaries and restoring enabled MFA without reviving pending enrollment
+or sessions. An independent focused implementation review found no outstanding
+actionable issue after the documented UI/session fixes.
+
+The hardened local AMD64 image built and ran as UID 10001 with read-only root,
+capabilities dropped and no-new-privileges; health and source version checks
+passed. A genuine SolidCraft v0.12.0 download again passed the publisher checksum,
+bounded extraction, hosting adaptation and atomic activation. This does not
+extend previously recorded real-app or production-host compatibility claims.

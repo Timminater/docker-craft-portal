@@ -102,6 +102,10 @@ def restore(snapshot: Path, data_dir: Path):
             with db:
                 db.execute('DELETE FROM launch_tickets')
                 db.execute('DELETE FROM sessions')
+                # Older snapshots predate MFA enrollment; retain activated
+                # factors/recovery hashes, discard unfinished secret enrollment.
+                if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='account_mfa_pending'").fetchone():
+                    db.execute('DELETE FROM account_mfa_pending')
         (stage / 'staging').mkdir(mode=0o700)
         os.rename(stage, data_dir)
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 import sqlite3
 import threading
 import time
@@ -29,6 +30,17 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS user_preferences (
  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
  app_order TEXT NOT NULL DEFAULT '[]'
+);
+CREATE TABLE IF NOT EXISTS account_mfa_pending (
+ user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+ secret TEXT NOT NULL,
+ parent_hash TEXT NOT NULL,
+ expires_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS account_recovery_codes (
+ user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ code_hash TEXT NOT NULL,
+ PRIMARY KEY(user_id,code_hash)
 );
 CREATE TABLE IF NOT EXISTS sessions (
  token_hash TEXT PRIMARY KEY,
@@ -97,6 +109,20 @@ class Database:
         self.con.execute("PRAGMA busy_timeout=5000")
         self.con.executescript(SCHEMA)
         with self.tx() as con:
+            # Additive upgrades preserve existing accounts and live sessions.
+            additions = {
+                "users": {"mfa_secret": "TEXT", "mfa_last_counter": "INTEGER NOT NULL DEFAULT -1"},
+                "sessions": {"display_id": "TEXT", "device_label": "TEXT NOT NULL DEFAULT 'Unknown browser'"},
+                "user_preferences": {"hidden_dock_apps": "TEXT NOT NULL DEFAULT '[]'"},
+            }
+            for table, fields in additions.items():
+                present = {row["name"] for row in con.execute(f"PRAGMA table_info({table})")}
+                for name, definition in fields.items():
+                    if name not in present:
+                        con.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+            for row in con.execute("SELECT token_hash FROM sessions WHERE display_id IS NULL").fetchall():
+                con.execute("UPDATE sessions SET display_id=? WHERE token_hash=?", (secrets.token_urlsafe(18), row["token_hash"]))
+            con.execute("CREATE UNIQUE INDEX IF NOT EXISTS sessions_display_id ON sessions(display_id)")
             for key, value in DEFAULT_SETTINGS.items():
                 con.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (key,value))
 
@@ -140,6 +166,8 @@ class Database:
         with self.tx() as con:
             con.execute("DELETE FROM sessions WHERE expires_at<?", (now,))
             con.execute("DELETE FROM launch_tickets WHERE expires_at<?", (now,))
+            con.execute("""DELETE FROM account_mfa_pending WHERE expires_at<?
+                OR parent_hash NOT IN (SELECT token_hash FROM sessions WHERE kind='portal')""", (now,))
 
     def close(self):
         with self.lock:

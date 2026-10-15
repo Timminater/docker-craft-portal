@@ -23,9 +23,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .artwork import Artwork, KINDS
 from .sources import app_owner
 from .auth import APP_COOKIE, PORTAL_COOKIE, Auth, digest
+from .account import register_account_routes
 from .config import Config
 from .database import Database
 from .updater import Updater, SLUG, TAG
+from .updates import PortalUpdates
 
 LOG = logging.getLogger(__name__)
 mimetypes.add_type("application/wasm",".wasm")
@@ -97,11 +99,14 @@ class TicketInput(BaseModel):
 
 class PreferencesInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    app_order: list[str] = Field(max_length=100)
+    app_order: list[str] | None = Field(default=None, max_length=100)
+    hidden_dock_apps: list[str] | None = Field(default=None, max_length=100)
 
-    @field_validator("app_order")
+    @field_validator("app_order", "hidden_dock_apps")
     @classmethod
-    def valid_app_order(cls, value: list[str]) -> list[str]:
+    def valid_app_order(cls, value: list[str] | None) -> list[str]:
+        if value is None:
+            raise ValueError("Application identifiers must be a list")
         if any(not SLUG.fullmatch(slug) for slug in value):
             raise ValueError("Invalid application identifier")
         if len(set(value)) != len(value):
@@ -112,6 +117,7 @@ class PreferencesInput(BaseModel):
 class LoginInput(BaseModel):
     username: str = Field(min_length=1, max_length=48)
     password: str = Field(min_length=1, max_length=1024)
+    otp: str = Field(default="", max_length=80)
 
 
 def same_origin(request: Request, cfg: Config):
@@ -133,6 +139,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
     db = Database(cfg.data_dir/"database"/"portal.sqlite")
     auth = Auth(db)
     updater = Updater(cfg,db)
+    portal_updates = PortalUpdates(updater)
     artwork = Artwork(cfg.data_dir, STATIC, network=cfg.auto_start_updates)
     if start_updater is None: start_updater=cfg.auto_start_updates
 
@@ -200,7 +207,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
                 return JSONResponse(status_code=400,content={"detail":"Invalid Content-Length"})
         response=await call_next(request)
         # Never let browser/proxy caches bypass a later authorization check.
-        if request.url.path.startswith(("/api/", "/a/", "/v/")) or request.url.path in {"/_redeem", "/_app_info"}:
+        if request.url.path.startswith(("/api/", "/a/", "/v/")) or request.url.path in {"/_redeem", "/_app_info", "/_storage", "/_storage.js"}:
             response.headers["Cache-Control"]="no-store"
         response.headers["X-Content-Type-Options"]="nosniff"
         response.headers["Referrer-Policy"]="no-referrer"
@@ -251,6 +258,18 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
 
     def cookie(response: Response, name: str, token: str, ttl: int):
         response.set_cookie(cookie_name(name),token,max_age=ttl,path="/",httponly=True,secure=cfg.secure_cookie,samesite="lax")
+
+    register_account_routes(app, cfg, db, auth, session, changing, check_login_limit)
+    app.state.portal_updates = portal_updates
+
+    @app.get("/api/portal/status")
+    def portal_status(s: dict = Depends(session)):
+        return portal_updates.status(admin=s["role"] == "admin")
+
+    @app.post("/api/admin/portal/check")
+    def portal_update_check(request: Request, s: dict = Depends(admin_session)):
+        changing(request, s)
+        return portal_updates.check(admin=True)
 
     @app.get("/healthz")
     async def health():
@@ -318,8 +337,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         response.headers["Cache-Control"]="no-store"
         return response
 
-    @app.get("/_app_info")
-    async def app_info(request: Request, slug: str):
+    def app_info_sync(request: Request, slug: str):
         kind, host_slug, public_id = host_type(request)
         if kind not in {"app", "single_app"} or not SLUG.fullmatch(slug): raise HTTPException(404)
         if kind == "app" and host_slug != slug: raise HTTPException(403)
@@ -331,30 +349,64 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         path = f"/v/{row['active_version']}/" if kind == "app" else f"/a/{slug}/v/{row['active_version']}/"
         return JSONResponse({"version": row["active_version"], "path": path}, headers={"Cache-Control":"no-store"})
 
+    @app.get("/_app_info")
+    async def app_info(request: Request, slug: str):
+        return app_info_sync(request, slug)
+
     @app.get("/api/bootstrap")
     async def bootstrap(request: Request):
         portal_only(request)
         s=auth.get_session(read_cookie(request, PORTAL_COOKIE),"portal")
         return {"setup_required":auth.setup_required(),"user":format_user(s) if s else None,"csrf":auth.csrf(s) if s else None,"multi_user":cfg.multi_user,"app_origin_configured":cfg.app_origin_configured,"app_origin_mode":cfg.app_origin_mode,"app_origin":cfg.single_app_url or None}
 
+    @app.get("/_storage")
+    def storage_document(request: Request, slug: str):
+        # Reuse the asset authorization boundary, including parent session,
+        # account hostname and enabled application checks.
+        app_info_sync(request, slug)
+        page = (STATIC / "storage.html").read_text()
+        meta = (f'<meta name="craft-portal-origin" content="{html.escape(cfg.public_url, quote=True)}">'
+                f'<meta name="craft-app-slug" content="{html.escape(slug, quote=True)}">')
+        return HTMLResponse(page.replace("</head>", meta + "</head>"), headers={"Cache-Control": "no-store"})
+
+    @app.get("/_storage.js")
+    def storage_script(request: Request):
+        if host_type(request)[0] not in {"app", "single_app"}:
+            raise HTTPException(404)
+        return FileResponse(STATIC / "storage.js", headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/storage/origins")
+    def storage_origins(s: dict = Depends(session)):
+        grouped = {}
+        if cfg.app_origin_configured:
+            for record in db.all("SELECT slug,name FROM apps WHERE active_version IS NOT NULL AND disabled=0 ORDER BY name"):
+                slug = record["slug"]
+                origin = f"https://{slug}--{s['public_id']}.{cfg.apps_domain}" if cfg.isolated_app_origins else cfg.single_app_url
+                group = grouped.setdefault(origin, {"origin": origin, "slug": slug, "apps": []})
+                group["apps"].append(record)
+        return {"mode": cfg.app_origin_mode, "origins": list(grouped.values())}
+
     @app.get("/api/preferences")
     def preferences(s: dict = Depends(session)):
-        row = db.one("SELECT app_order FROM user_preferences WHERE user_id=?", (s["user_id"],))
-        return {"app_order": json.loads(row["app_order"]) if row else []}
+        row = db.one("SELECT app_order,hidden_dock_apps FROM user_preferences WHERE user_id=?", (s["user_id"],))
+        return {field: json.loads(row[field]) if row else [] for field in ("app_order", "hidden_dock_apps")}
 
     @app.put("/api/preferences")
     def save_preferences(request: Request, payload: PreferencesInput, s: dict = Depends(session)):
         changing(request, s)
+        fields = payload.model_dump(exclude_unset=True)
         with db.tx() as con:
-            if payload.app_order:
-                placeholders = ",".join("?" for _ in payload.app_order)
-                known = con.execute(f"SELECT slug FROM apps WHERE slug IN ({placeholders})", payload.app_order).fetchall()
-                if len(known) != len(payload.app_order):
+            for value in fields.values():
+                if not value:
+                    continue
+                placeholders = ",".join("?" for _ in value)
+                known = con.execute(f"SELECT slug FROM apps WHERE slug IN ({placeholders})", value).fetchall()
+                if len(known) != len(value):
                     raise HTTPException(400, "Unknown application identifier")
-            con.execute("""INSERT INTO user_preferences(user_id,app_order) VALUES(?,?)
-                ON CONFLICT(user_id) DO UPDATE SET app_order=excluded.app_order""",
-                        (s["user_id"], json.dumps(payload.app_order)))
-        return {"app_order": payload.app_order}
+            con.execute("INSERT OR IGNORE INTO user_preferences(user_id) VALUES(?)", (s["user_id"],))
+            for field, value in fields.items():
+                con.execute(f"UPDATE user_preferences SET {field}=? WHERE user_id=?", (json.dumps(value), s["user_id"]))
+        return preferences(s)
 
     @app.post("/api/setup")
     def setup(request:Request,payload:FirstSetup):
@@ -362,7 +414,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         check_login_limit(request, "__first_setup__")
         try: user_id=auth.setup(payload.code,payload.username,payload.password)
         except ValueError as exc: raise HTTPException(400,str(exc)) from exc
-        token=auth.new_session(user_id,"portal")
+        token=auth.new_session(user_id,"portal",device_label=request.headers.get("user-agent", ""))
         response=JSONResponse({"ok":True})
         cookie(response,PORTAL_COOKIE,token,12*3600)
         db.log("info","admin_created",payload.username)
@@ -374,10 +426,10 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         portal_only(request); same_origin(request,cfg)
         if auth.setup_required(): raise HTTPException(409,"Complete administrator setup first")
         check_login_limit(request, payload.username)
-        result=auth.signin(payload.username,payload.password)
+        result=auth.signin(payload.username,payload.password,payload.otp,request.headers.get("user-agent", ""))
         if not result:
             # Deliberately generic error. A reverse proxy should also rate-limit /api/login.
-            raise HTTPException(401,"Incorrect username or password")
+            raise HTTPException(401,"Incorrect username, password or verification code")
         token,_user=result
         response=JSONResponse({"ok":True})
         cookie(response,PORTAL_COOKIE,token,12*3600)
@@ -424,6 +476,12 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         if embedded:
             url += "&embedded=1"
         return {"url":url,"origin":url.split("/#",1)[0],"slug":slug,"embedded":embedded}
+
+    @app.post("/api/apps/{slug}/storage")
+    async def storage_launch(slug: str, request: Request, s: dict = Depends(session)):
+        result = await launch(slug, request, False, s)
+        result["url"] += "&storage=1"
+        return {field: result[field] for field in ("url", "origin", "slug")}
 
     @app.get("/api/admin/status")
     def status(request:Request,s:dict=Depends(admin_session)):

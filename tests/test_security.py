@@ -190,7 +190,7 @@ def test_blocking_login_does_not_block_health_requests(factory, monkeypatch):
     app.state.auth.create_user('admin', 'strong password 123!', 'admin')
     entered, release = threading.Event(), threading.Event()
 
-    def slow_signin(username, password):
+    def slow_signin(username, password, *args, **kwargs):
         entered.set()
         assert release.wait(3), 'test did not release password verification'
         return None

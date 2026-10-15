@@ -23,6 +23,7 @@ from .config import Config
 from .database import Database
 from .hosting import solidcraft_index
 from .sources import EXTRA_APPS, app_owner
+from .version import VERSION
 
 LOG = logging.getLogger(__name__)
 SLUG = re.compile(r"^[a-z][a-z0-9]{1,29}craft$")
@@ -53,6 +54,17 @@ def serialized(method):
     def run(self, *args, **kwargs):
         with self.lock:
             return method(self, *args, **kwargs)
+    return run
+
+
+def installation_progress(method):
+    @wraps(method)
+    def run(self, slug, *args, **kwargs):
+        self.set_progress(slug, "metadata")
+        try:
+            return method(self, slug, *args, **kwargs)
+        finally:
+            self.set_progress(None, None)
     return run
 
 
@@ -204,24 +216,63 @@ class Updater:
         self.cfg,self.db = cfg,db
         self.lock = threading.RLock()
         self.schedule_lock = threading.Lock()
+        self.state_lock = threading.Lock()
+        self.progress = None
         self.manual_thread = None
         self.scheduled = False
         self.running = False
         self.last_check = None
         self.next_check = None
         self.last_result = "never"
+        self.last_check_failed = False
         self.stop_event = threading.Event()
         self.thread = None
         (cfg.data_dir/"apps").mkdir(parents=True,exist_ok=True)
         (cfg.data_dir/"staging").mkdir(parents=True,exist_ok=True)
         self.opener = build_opener(SafeRedirect)
 
+    def set_progress(self, slug, phase, downloaded_bytes=None, total_bytes=None):
+        with self.state_lock:
+            self.progress = None if phase is None else {
+                "slug": slug, "phase": phase,
+                "downloaded_bytes": downloaded_bytes, "total_bytes": total_bytes,
+            }
+
+    def snapshot(self, *, admin=False):
+        # Do not acquire the install lock: downloads can take minutes, while the
+        # overview must remain available to report their actual progress.
+        with self.state_lock:
+            state = {"running": self.running or self.progress is not None,
+                     "last_check": self.last_check, "next_check": self.next_check,
+                     "last_result": ("never" if self.last_check is None else
+                                     "error" if self.last_check_failed else "complete"),
+                     "progress": dict(self.progress) if self.progress else None}
+        with self.schedule_lock:
+            state["scheduled"] = self.scheduled
+        rows = self.db.all("SELECT slug,name,active_version,latest_version,auto_update,status,last_error,disabled FROM apps ORDER BY name COLLATE NOCASE")
+        visible = {row["slug"] for row in rows if admin or not row["disabled"]}
+        if state["progress"] and state["progress"]["slug"] is not None and state["progress"]["slug"] not in visible:
+            state["progress"] = None
+        state["apps"] = []
+        for row in rows:
+            if row["slug"] not in visible:
+                continue
+            error = bool(row.pop("last_error"))
+            disabled = bool(row.pop("disabled"))
+            row["auto_update"] = bool(row["auto_update"])
+            row["has_error"] = error
+            row["update_available"] = bool(row["latest_version"] and row["active_version"] != row["latest_version"])
+            if admin:
+                row["disabled"] = disabled
+            state["apps"].append(row)
+        return state
+
     def request(self,url: str,*,limit=3_000_000) -> bytes:
         p = urlparse(url)
         allowed = {"api.github.com", "getartcraft.com", "www.getartcraft.com"}
         if p.scheme != "https" or p.hostname not in allowed or p.port not in (None,443) or p.username or p.password:
             raise InstallError("Disallowed metadata URL")
-        headers = {"User-Agent":"craft-portal/2026.10.15.0 (+https://github.com/Timminater/craft-portal)","Accept":"application/vnd.github+json" if p.hostname=="api.github.com" else "text/html"}
+        headers = {"User-Agent":f"craft-portal/{VERSION.removeprefix('v')} (+https://github.com/Timminater/craft-portal)","Accept":"application/vnd.github+json" if p.hostname=="api.github.com" else "text/html"}
         if p.hostname=="api.github.com" and self.cfg.github_token:
             headers["Authorization"] = "Bearer " + self.cfg.github_token
         with self.opener.open(Request(url,headers=headers),timeout=25) as response:
@@ -239,8 +290,11 @@ class Updater:
                 or p.username or p.password or p.query or p.fragment
                 or not (p.path.startswith(f"/{self.cfg.trusted_owner}/") or additional)):
             raise InstallError("Untrusted asset URL")
-        headers = {"User-Agent":"craft-portal/2026.10.15.0"}
+        headers = {"User-Agent":f"craft-portal/{VERSION.removeprefix('v')}"}
         total=0; h=hashlib.sha256()
+        with self.state_lock:
+            slug = self.progress["slug"] if self.progress else None
+        self.set_progress(slug, "download", 0, expected_size)
         with self.opener.open(Request(url,headers=headers),timeout=90) as response, destination.open("xb") as f:
             while True:
                 if self.stop_event.is_set():
@@ -251,6 +305,7 @@ class Updater:
                 if total>self.cfg.max_zip_bytes or total>expected_size:
                     raise InstallError("ZIP larger than expected")
                 h.update(data);f.write(data)
+                self.set_progress(slug, "download", total, expected_size)
             f.flush();os.fsync(f.fileno())
         if total!=expected_size or not hmac_compare(h.hexdigest(), expected_digest.lower().removeprefix("sha256:")):
             raise InstallError("Release ZIP size or checksum mismatch")
@@ -281,6 +336,7 @@ class Updater:
         return "updated"
 
     @serialized
+    @installation_progress
     def install(self,slug: str, release: dict):
         if self.stop_event.is_set(): raise InstallError("Updater is shutting down")
         if not SLUG.fullmatch(slug): raise InstallError("Invalid app slug")
@@ -299,13 +355,16 @@ class Updater:
                 zip_path=tmp/"bundle.zip"
                 asset=release["asset"]
                 self.download(asset["browser_download_url"],asset["size"],asset["digest"],zip_path)
+                self.set_progress(slug, "extract")
                 unpack_archive(zip_path,tmp/"unpacked",slug,version,self.cfg.max_extracted_bytes)
                 if slug == 'solidcraft':
                     index = tmp / 'unpacked' / 'index.html'
                     index.write_text(solidcraft_index(index.read_text(encoding='utf-8')), encoding='utf-8')
                 if self.stop_event.is_set():
                     raise InstallError("Updater is shutting down")
+                self.set_progress(slug, "activate")
                 os.replace(tmp/"unpacked",dest)
+        self.set_progress(slug, "activate")
         with self.db.tx() as con:
             con.execute("INSERT OR IGNORE INTO versions(slug,version,rel_path,installed_at) VALUES(?,?,?,?)", (slug,version,f"apps/{slug}/versions/{version}",time.time()))
             con.execute("UPDATE apps SET active_version=?, status='ready', last_error='', installed_at=COALESCE(installed_at,?),updated_at=? WHERE slug=?",(version,time.time(),time.time(),slug))
@@ -344,9 +403,11 @@ class Updater:
         if self.stop_event.is_set(): return False
         if not self.lock.acquire(blocking=False):
             return False
-        self.running=True
-        try:
+        with self.state_lock:
+            self.running=True
             self.last_check=time.time()
+        try:
+            self.set_progress(None, "catalog")
             self.db.log("info","check_started","Checking official app catalog")
             catalog_error = None
             try:
@@ -365,6 +426,7 @@ class Updater:
             errors=[]; updates=0
             for slug in slugs:
                 if self.stop_event.is_set(): break
+                self.set_progress(slug, "metadata")
                 try:
                     if slug not in EXTRA_APPS:
                         # Original publishers still require the official catalog link.
@@ -378,14 +440,19 @@ class Updater:
                     self.db.log("error","update_failed",str(exc),slug)
                     if self.db.one("SELECT slug FROM apps WHERE slug=?",(slug,)):
                         self.db.run("UPDATE apps SET last_error=?,status=CASE WHEN active_version IS NULL THEN 'error' ELSE 'ready' END WHERE slug=?",(str(exc)[:500],slug))
-            self.last_result=f"{updates} updates; {len(errors)} errors"
-            if catalog_error is not None:
-                self.last_result = "Catalog check failed: " + catalog_error + "; " + self.last_result
+            with self.state_lock:
+                self.last_check_failed = bool(errors) or catalog_error is not None
+                self.last_result=f"{updates} updates; {len(errors)} errors"
+                if catalog_error is not None:
+                    self.last_result = "Catalog check failed: " + catalog_error + "; " + self.last_result
             self.db.log("info","check_completed",self.last_result)
             return catalog_error is None
         finally:
-            self.running=False
-            self.next_check=time.time()+max(1,min(168,int(self.db.setting("update_interval_hours"))))*3600
+            next_check=time.time()+max(1,min(168,int(self.db.setting("update_interval_hours"))))*3600
+            with self.state_lock:
+                self.running=False
+                self.progress=None
+                self.next_check=next_check
             self.lock.release()
 
     def start(self):

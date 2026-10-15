@@ -227,3 +227,23 @@ body.has-dock .app-shell{min-height:calc(100vh - 52px - env(safe-area-inset-bott
 .dock-items{height:calc(82px + env(safe-area-inset-bottom,0px));margin-top:-30px;box-sizing:border-box;padding:30px 12px calc(3px + env(safe-area-inset-bottom,0px));display:flex;justify-content:safe center;align-items:center;gap:4px;overflow-x:auto;overflow-y:hidden;pointer-events:none}
 .dock-app{pointer-events:auto}
 @media(max-width:760px){.dock-items{padding-left:6px;padding-right:6px;gap:2px}}
+
+/* Personal settings stay usable on narrow screens and in long account lists. */
+.avatar{border:0;flex-shrink:0}
+.sidebar .nav{min-height:0;overflow-y:auto}
+.settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+.settings-grid .panel{margin-bottom:0}
+.settings-grid+.panel{margin-top:18px}
+.settings-details{display:grid;grid-template-columns:minmax(130px,auto) minmax(0,1fr);gap:8px 20px;font-size:.88rem;margin:14px 0 0}
+.settings-details dt{color:var(--muted)}.settings-details dd{margin:0;overflow-wrap:anywhere}
+.session-list{list-style:none;padding:0;margin:0;display:grid;gap:0}
+.session-list li{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:16px 0;border-bottom:1px solid var(--line)}
+.session-list li:last-child{border-bottom:0;padding-bottom:0}.session-list li>div{min-width:0;overflow-wrap:anywhere}.session-list .pill{display:inline-block;margin:4px}.session-list .danger{flex-shrink:0;font-size:.8rem;padding:7px 12px}
+.mfa-secret{display:block;margin:12px 0;padding:15px;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow-wrap:anywhere;font-size:1.05rem;user-select:all;letter-spacing:.08em}
+.recovery-codes{width:100%;resize:vertical;background:var(--bg);border:1px solid var(--line);color:var(--text);padding:14px;border-radius:10px;font:1rem/1.6 ui-monospace,monospace}
+.dock-option{display:flex;align-items:center;gap:12px;padding:10px;border:1px solid var(--line);border-radius:10px;cursor:pointer}.dock-option>span:nth-child(2){flex:1}.dock-option input{width:20px;height:20px;accent-color:var(--accent)}
+.storage-group{padding:18px 0;border-bottom:1px solid var(--line)}.storage-group:first-child{padding-top:0}.storage-group:last-child{border-bottom:0;padding-bottom:0}.storage-origin{overflow-wrap:anywhere}.storage-group .row button{font-size:.82rem}.backup-guide{padding-left:22px;margin:16px 0;display:grid;gap:10px;color:var(--light)}
+@media(max-width:1050px){.settings-grid{grid-template-columns:1fr}.settings-grid .panel{margin-bottom:0}}
+@media(max-width:590px){.sidebar .nav{overflow-x:auto;overflow-y:hidden;flex:1;min-width:0;max-width:100%;scrollbar-width:thin}.sidebar .nav button{flex:0 0 38px;min-width:38px;width:38px;padding:8px}.sidebar .brand,.sidebar-bottom{flex-shrink:0}.settings-details{grid-template-columns:minmax(105px,auto) minmax(0,1fr);gap:8px 12px}.session-list li{align-items:flex-start;flex-wrap:wrap}.session-list .danger{margin-left:auto}.settings-grid .panel{padding:20px}.storage-group .row{align-items:stretch;flex-direction:column}.storage-group .row button{width:100%}}
+
+body.has-dock .toast{bottom:calc(64px + env(safe-area-inset-bottom,0px))}

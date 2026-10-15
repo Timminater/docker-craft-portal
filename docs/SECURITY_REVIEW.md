@@ -42,7 +42,7 @@ not external certification or proof that upstream app code is benign.
 * The volume is the trusted persistence boundary: an operator who can modify it
   can replace application code, users or database pointers. Backups contain
   password hashes; a checksum manifest is not a signature against that operator.
-* Existing-user recovery, MFA/OIDC, email reset and centralized document sync are
+* Existing-user email recovery, OIDC, email reset and centralized document sync are
   outside this release's scope. Never expose an unreviewed first-run installation.
 * CI is configured for both CPU architectures and browser engines. Configuring
   jobs does not prove a hosted run or release publication succeeded. Pin deployed
@@ -99,3 +99,33 @@ Native release links resolve to the actual configured publisher. Artwork comes
 from pinned, licensed upstream source files and stays portal-authenticated.
 Independent read-only review found no concrete blockers. Shared-origin browser
 storage retains the previously documented profile boundary for all hosted apps.
+
+## Account settings and storage diagnostics (2026-10-15)
+
+An independent focused read-only review examined the new account and diagnostic
+paths. Password changes verify the current hash and live session again inside
+the write transaction; sign-in also rechecks the password/factor after Argon2
+verification. Accepted TOTP counters and recovery hashes are consumed in that
+same transaction. Enrollment is password-verified, expires after ten minutes,
+and is bound to the initiating portal session. Recovery codes have 80 random
+bits each, are stored as hashes and share credential-attempt limits.
+
+Session display IDs are unrelated to bearer tokens/digests. Session queries and
+revocation are restricted to the signed-in user, including child app sessions
+and launch tickets. Credential/MFA mutations revoke other devices while retaining
+the current authorized workspace. MFA secrets are confidential database contents;
+no external QR service, email delivery or telemetry is used.
+
+Browser storage diagnostics use the existing app-ticket and parent-session
+authorization boundary. The utility reports aggregate estimates and persistence
+status only to the configured portal parent. The portal validates the exact
+origin, frame, slug and random request ID; leaving the page or changing session
+removes diagnostic frames. Shared-host measurements are grouped by origin.
+Portal release checks accept stable calendar tags and exact links from the two
+fixed migration repositories; they do not execute downloads or replace code.
+
+Review found and resolved stale MFA form state and a delayed old-session response
+that could visually sign out a new login. Tests cover credential/factor races,
+old-schema upgrades, session ownership/revocation and storage message forgery.
+This focused implementation review does not claim an external penetration test
+or validation of the operator's live DNS/TLS deployment.

@@ -20,6 +20,9 @@ def seed(path):
 def test_snapshot_restore_wal_database_assets_and_revoked_sessions(tmp_path):
     data, snapshot, target = (tmp_path / p for p in ('live', 'snapshot', 'restored'))
     db = seed(data)
+    db.run("UPDATE users SET mfa_secret='ENABLED-FACTOR' WHERE id=1")
+    db.run("INSERT INTO account_recovery_codes(user_id,code_hash) VALUES(1,'saved-code-hash')")
+    db.run("INSERT INTO account_mfa_pending(user_id,secret,parent_hash,expires_at) VALUES(1,'unfinished-secret','session',9999999999)")
     # Exercise SQLite backup with committed WAL pages, not a naked copy of the main file.
     backup(data, snapshot)
     db.close()
@@ -27,6 +30,9 @@ def test_snapshot_restore_wal_database_assets_and_revoked_sessions(tmp_path):
     with sqlite3.connect(target / 'database/portal.sqlite') as con:
         assert con.execute('SELECT username FROM users').fetchone() == ('owner',)
         assert con.execute('SELECT count(*) FROM sessions').fetchone() == (0,)
+        assert con.execute('SELECT count(*) FROM account_mfa_pending').fetchone() == (0,)
+        assert con.execute('SELECT mfa_secret FROM users').fetchone() == ('ENABLED-FACTOR',)
+        assert con.execute('SELECT code_hash FROM account_recovery_codes').fetchone() == ('saved-code-hash',)
     assert (target / 'apps/photocraft/versions/v1.0.0/index.html').read_text() == 'retained app'
     assert target.stat().st_mode & 0o777 == 0o700
 

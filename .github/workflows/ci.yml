@@ -19,6 +19,8 @@ jobs:
       - run: python -m pytest -q
       - run: node --check portal/static/app.js
       - run: node --check portal/static/bridge.js
+      - run: node --check portal/static/storage.js
+      - run: node --check portal/static/i18n.js
   browser:
     runs-on: ubuntu-24.04
     steps:

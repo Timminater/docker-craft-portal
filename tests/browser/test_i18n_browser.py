@@ -119,8 +119,8 @@ def test_localized_portal_pages_without_console_errors(browser, site, locale, la
 
 
 @pytest.mark.parametrize('locale,message', [
-    ('en-US', 'Incorrect username or password'),
-    ('nl-NL', 'Onjuiste gebruikersnaam of wachtwoord'),
+    ('en-US', 'Incorrect username, password or verification code'),
+    ('nl-NL', 'Onjuiste gebruikersnaam, wachtwoord of verificatiecode'),
 ])
 def test_login_error_uses_browser_language(browser, site, locale, message):
     app, origin, apps, port = site

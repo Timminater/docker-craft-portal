@@ -6,6 +6,7 @@
   const ticket = parts.get('ticket');
   const slug = parts.get('slug');
   const embedded=parts.get('embedded')==='1';
+  const storage=parts.get('storage')==='1';
   const portalOrigin=document.querySelector('meta[name="craft-portal-origin"]')?.content;
   function report(type){
     if(!embedded||window.parent===window||!portalOrigin)return;
@@ -20,6 +21,9 @@
     });
     if (!resp.ok) throw new Error(t("Toegang geweigerd of verlopen."));
     await resp.arrayBuffer(); // Finish the redemption response before navigating the frame.
+    // Storage belongs to the actual app origin. Authenticate that origin without
+    // starting an editor or touching the user's documents.
+    if(storage){location.replace('/_storage?slug='+encodeURIComponent(slug));return;}
     // Resolve the active app version after redeeming the one-time ticket.
     const info = await fetch('/_app_info?slug=' + encodeURIComponent(slug), {credentials:'same-origin',cache:'no-store'});
     if (!info.ok) throw new Error(t("Applicatieversie niet beschikbaar."));

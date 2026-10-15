@@ -80,5 +80,10 @@ precise remaining work.
 
 ## Deliberately outside scope
 
-Central document synchronization, OIDC/SSO, MFA, recovery emails/password resets,
+Central document synchronization, OIDC/SSO, recovery emails/password resets,
 custom/unsigned publishers, prerelease installs and cloud storage automation.
+
+Self-service password changes, owned session revocation and optional TOTP with
+single-use recovery codes are supported. Browser storage estimates/persistence
+depend on browser support and are not a document backup. See
+[personal settings](personal-settings.md).

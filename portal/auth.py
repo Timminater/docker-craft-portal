@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import base64
 import re
 import secrets
+import struct
 import time
 
 from argon2 import PasswordHasher, Type
@@ -20,6 +22,49 @@ APP_COOKIE = "craft_app_session"
 
 def digest(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def device_name(user_agent: str) -> str:
+    """Keep a useful coarse label, never the identifying raw user-agent or IP."""
+    ua = user_agent[:1024].lower()
+    browser = next((name for marker, name in (("edg/", "Edge"), ("firefox/", "Firefox"),
+                    ("chrome/", "Chrome"), ("safari/", "Safari")) if marker in ua), "Browser")
+    system = next((name for marker, name in (("android", "Android"), ("iphone", "iOS"),
+                   ("ipad", "iPadOS"), ("windows", "Windows"), ("macintosh", "macOS"),
+                   ("linux", "Linux")) if marker in ua), "unknown device")
+    return f"{browser} · {system}"
+
+
+def totp_code(secret: str, counter: int) -> str:
+    key = base64.b32decode(secret, casefold=True)
+    mac = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
+    offset = mac[-1] & 15
+    return f"{(int.from_bytes(mac[offset:offset+4], 'big') & 0x7fffffff) % 1000000:06d}"
+
+
+def matching_counter(secret: str, code: str, last: int = -1, now: float | None = None) -> int | None:
+    if not re.fullmatch(r"\d{6}", code, re.ASCII):
+        return None
+    current = int((time.time() if now is None else now) // 30)
+    for counter in (current, current - 1, current + 1):
+        if counter > last and hmac.compare_digest(totp_code(secret, counter), code):
+            return counter
+    return None
+
+
+def consume_factor(con, user, code: str) -> bool:
+    """Called under the same write transaction as the protected operation."""
+    if not user["mfa_secret"]:
+        return True
+    counter = matching_counter(user["mfa_secret"], code, user["mfa_last_counter"])
+    if counter is not None:
+        con.execute("UPDATE users SET mfa_last_counter=? WHERE id=?", (counter, user["id"]))
+        return True
+    normalized = code.replace("-", "").replace(" ", "").lower()
+    if not re.fullmatch(r"[0-9a-f]{20}", normalized):
+        return False
+    return con.execute("DELETE FROM account_recovery_codes WHERE user_id=? AND code_hash=?",
+                       (user["id"], digest(normalized))).rowcount == 1
 
 
 class Auth:
@@ -59,7 +104,7 @@ class Auth:
         self.setup_code = ""
         return user_id
 
-    def signin(self, username: str, password: str) -> tuple[str, dict] | None:
+    def signin(self, username: str, password: str, otp: str = "", device_label: str = "") -> tuple[str, dict] | None:
         user = self.db.one("SELECT * FROM users WHERE username=? AND enabled=1", (username,))
         if not user:
             # Equalize work for unknown usernames.
@@ -73,15 +118,25 @@ class Auth:
                 return None
         except (VerifyMismatchError, VerificationError):
             return None
-        if PH.check_needs_rehash(user["password_hash"]):
-            self.db.run("UPDATE users SET password_hash=? WHERE id=?", (PH.hash(password),user["id"]))
-        return self.new_session(user["id"], "portal"), user
+        refreshed_hash = PH.hash(password) if PH.check_needs_rehash(user["password_hash"]) else None
+        with self.db.tx() as con:
+            current = con.execute("SELECT * FROM users WHERE id=? AND enabled=1", (user["id"],)).fetchone()
+            if (not current or current["password_hash"] != user["password_hash"]
+                    or current["mfa_secret"] != user["mfa_secret"] or not consume_factor(con, current, otp)):
+                return None
+            if refreshed_hash:
+                con.execute("UPDATE users SET password_hash=? WHERE id=?", (refreshed_hash,user["id"]))
+            return self._insert_session(con, user["id"], "portal", device_label=device_label), user
 
-    def new_session(self, user_id: int, kind: str, scope: str = "", parent_hash: str | None = None):
+    def new_session(self, user_id: int, kind: str, scope: str = "", parent_hash: str | None = None, device_label: str = ""):
+        with self.db.tx() as con:
+            return self._insert_session(con, user_id, kind, scope, parent_hash, device_label)
+
+    def _insert_session(self, con, user_id: int, kind: str, scope: str = "", parent_hash: str | None = None, device_label: str = ""):
         token = secrets.token_urlsafe(36)
         now = time.time()
         ttl = 60*60*12 if kind == "portal" else 60*60*8
-        self.db.run("INSERT INTO sessions(token_hash,user_id,kind,scope,parent_hash,expires_at,created_at) VALUES(?,?,?,?,?,?,?)", (digest(token),user_id,kind,scope,parent_hash,now+ttl,now))
+        con.execute("INSERT INTO sessions(token_hash,user_id,kind,scope,parent_hash,expires_at,created_at,display_id,device_label) VALUES(?,?,?,?,?,?,?,?,?)", (digest(token),user_id,kind,scope,parent_hash,now+ttl,now,secrets.token_urlsafe(18),device_name(device_label)))
         return token
 
     def get_session(self, token: str | None, kind: str, scope: str = "") -> dict | None:
@@ -102,6 +157,7 @@ class Auth:
         with self.db.tx() as con:
             con.execute("DELETE FROM sessions WHERE token_hash=? OR parent_hash=?", (token_hash, token_hash))
             con.execute("DELETE FROM launch_tickets WHERE parent_hash=?", (token_hash,))
+            con.execute("DELETE FROM account_mfa_pending WHERE parent_hash=?", (token_hash,))
 
     def new_ticket(self, session: dict, slug: str) -> str:
         token = secrets.token_urlsafe(32)
