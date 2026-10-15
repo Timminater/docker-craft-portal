@@ -215,3 +215,5 @@ body.has-dock{padding-bottom:calc(52px + env(safe-area-inset-bottom,0px))}
 @media(prefers-reduced-motion:reduce){.dock-icon{transition:none}.dock-app .dock-icon{transform:none!important}}
 body.has-dock .app-shell{min-height:calc(100vh - 52px - env(safe-area-inset-bottom,0px))}
 @media(min-width:591px){body.has-dock .sidebar{height:calc(100vh - 52px - env(safe-area-inset-bottom,0px))}}
+
+.app-inspiration{margin-top:6px;font-size:.74rem;line-height:1.45;color:var(--light)}

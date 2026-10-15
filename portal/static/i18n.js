@@ -146,6 +146,7 @@
     "pauseUpdates": "Pause automatic updates for {name}",
     "resumeUpdates": "Resume automatic updates for {name}",
     "activateVersion": "Activate version {version}?",
+    "inspiredBy": "Inspired by {name}",
     "libraryIntro": "Your creative tools, ready in your browser.",
     "appsReady": {
       "one": "{count} app ready",
@@ -365,6 +366,7 @@
     "pauseUpdates": "Automatische updates voor {name} pauzeren",
     "resumeUpdates": "Automatische updates voor {name} hervatten",
     "activateVersion": "Versie {version} activeren?",
+    "inspiredBy": "Geïnspireerd op {name}",
     "libraryIntro": "Je creatieve gereedschap, klaar in je browser.",
     "appsReady": {
       "one": "{count} app beschikbaar",
