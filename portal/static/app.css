@@ -202,17 +202,16 @@ body.has-dock{padding-bottom:calc(52px + env(safe-area-inset-bottom,0px))}
 .official-hero .art-fallback svg{width:100%;height:100%}
 @media(hover:hover) and (pointer:fine){.dock-app:hover:not(:disabled) .dock-icon,.dock-app:focus-visible .dock-icon{transform:translateY(-1px) scale(1.28)}.dock-app:has(+.dock-app:hover) .dock-icon,.dock-app:hover+.dock-app .dock-icon{transform:scale(1.1)}}
 .workspace-stage{position:fixed;inset:0 0 calc(52px + env(safe-area-inset-bottom,0px));z-index:25;background:var(--bg);display:flex;flex-direction:column}
-.workspace-toolbar{min-height:74px;display:flex;justify-content:space-between;gap:16px;align-items:center;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--sidebar)}
-.workspace-status{display:block;max-width:620px;font-size:.76rem}
-.workspace-actions{display:flex;gap:8px;flex-shrink:0}
-.workspace-actions button{padding:7px 10px;font-size:.8rem}
+.workspace-toolbar{min-height:46px;display:flex;justify-content:space-between;gap:12px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--line);background:var(--sidebar)}
+.workspace-heading{min-width:0;flex:1}.workspace-heading strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.88rem}.workspace-status{display:block;max-width:620px;font-size:.7rem;line-height:1.3}.workspace-status-helper{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.workspace-actions{display:flex;gap:5px;flex-shrink:0}
+.workspace-actions button{height:32px;display:flex;align-items:center;justify-content:center;gap:5px;padding:4px 8px;font-size:.75rem;white-space:nowrap}.workspace-action-icon{width:16px;height:16px;flex-shrink:0}
 .workspace-frames{flex:1;min-height:0;position:relative;background:#111}
 .workspace-frames iframe{border:0;display:block;width:100%;height:100%;background:#111}
 .workspace-visible{overflow:hidden}
-@media(max-width:760px){.workspace-toolbar{padding:10px;gap:8px;align-items:flex-start;flex-direction:column}.workspace-actions{width:100%;overflow-x:auto}.workspace-actions button{white-space:nowrap}.workspace-status{max-width:100%}.workspace-dock{padding-left:6px;padding-right:6px;gap:2px}.dock-app{width:44px}}
+@media(max-width:760px){.workspace-toolbar{padding:5px 8px;gap:8px;flex-direction:row}.workspace-actions{gap:3px}.workspace-actions button{height:34px;width:34px;padding:0}.workspace-action-label{display:none}.workspace-action-icon{width:18px;height:18px}.workspace-status{max-width:100%}.workspace-dock{padding-left:6px;padding-right:6px;gap:2px}.dock-app{width:44px}}
 /* Dialogs and error feedback must remain above the persistent app workspace. */
 .modal-back{z-index:60}.toast{z-index:70}
 @media(prefers-reduced-motion:reduce){.dock-icon{transition:none}.dock-app .dock-icon{transform:none!important}}
-@media(max-width:760px){.workspace-actions{flex-wrap:wrap;overflow-x:visible}}
 body.has-dock .app-shell{min-height:calc(100vh - 52px - env(safe-area-inset-bottom,0px))}
 @media(min-width:591px){body.has-dock .sidebar{height:calc(100vh - 52px - env(safe-area-inset-bottom,0px))}}
