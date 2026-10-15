@@ -46,7 +46,7 @@ jobs:
           if report.exists():
               for case in ET.parse(report).iter('testcase'):
                   for failure in list(case.findall('failure')) + list(case.findall('error')):
-                      message = (failure.text or failure.get('message', ''))[-6000:]
+                      message = failure.get('message', '') + '\n' + (failure.text or '')[-1800:]
                       message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
                       name = case.get('name', 'browser').replace(',', '_').replace('\n', ' ')
                       print(f'::error title={name}::{message}')
