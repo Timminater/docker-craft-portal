@@ -26,6 +26,12 @@ uvicorn portal.main:app --host 127.0.0.1 --port 8080
 
 Open <http://localhost:8080>. Find the first-start administrator code in the console, set username and strong password, and sign in. In local-only development, apps open on the separate origin <http://127.0.0.1:8080> automatically (same container, different browser origin). Startup schedules the initial official release check in a background thread and checks again every 6 hours. The UI is available while downloads happen. For offline development set `CRAFT_AUTO_START_UPDATES=false`.
 
+### Unraid
+
+Install the provided [Unraid user template](docs/unraid.md), with a persistent
+appdata mapping and configurable portal/app HTTPS origins. This is a manual user
+template, not a Community Applications listing.
+
 ### Docker Compose
 
 ```bash

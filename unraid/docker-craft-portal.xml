@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Container version="2">
+  <Name>docker-craft-portal</Name>
+  <Repository>ghcr.io/timminater/docker-craft-portal:v0.1.0-rc.1</Repository>
+  <Registry>https://github.com/Timminater/docker-craft-portal/pkgs/container/docker-craft-portal</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Timminater/docker-craft-portal/issues</Support>
+  <Project>https://github.com/Timminater/docker-craft-portal</Project>
+  <Overview>Self-hosted authenticated ArtCraft WASM portal. Release candidate: review the repository acceptance evidence before public deployment. REQUIRED: replace both example hostnames, configure HTTPS reverse proxy preserving Host, and prepare appdata ownership for UID/GID 10001. App code must use a different origin from the portal. This template is manually installed; it is not a Community Applications listing.</Overview>
+  <Category>Productivity:</Category>
+  <Icon>https://raw.githubusercontent.com/Timminater/docker-craft-portal/main/unraid/icon.svg</Icon>
+  <WebUI>https://craft.example.com</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/Timminater/docker-craft-portal/main/unraid/docker-craft-portal.xml</TemplateURL>
+  <ExtraParams>--read-only --tmpfs /tmp:size=64m,mode=1777,noexec,nosuid --cap-drop=ALL --security-opt=no-new-privileges:true --pids-limit=128 --stop-timeout=120 --log-driver=json-file --log-opt=max-size=10m --log-opt=max-file=3</ExtraParams>
+  <Config Name="Portal port" Target="8080" Default="8080" Mode="tcp" Description="Backend HTTP port. Restrict access to the trusted HTTPS reverse proxy; do not expose this port publicly." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/craft-portal" Mode="rw" Description="Prepare this directory as UID/GID 10001 with mode 0700 before first start. Contains private database and downloaded app versions." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/craft-portal</Config>
+  <Config Name="Portal HTTPS origin (REPLACE EXAMPLE)" Target="CRAFT_PUBLIC_URL" Default="https://craft.example.com" Mode="" Description="Exact external HTTPS portal origin. Replace example.com and update the container WebUI field to this same URL in Advanced View." Type="Variable" Display="always" Required="true" Mask="false">https://craft.example.com</Config>
+  <Config Name="Single-user app HTTPS origin (REPLACE EXAMPLE)" Target="CRAFT_SINGLE_APP_URL" Default="https://craft-apps.example.com" Mode="" Description="Different hostname from portal, proxied to the same backend. Replace example.com. Clear this value entirely when setting the multiuser wildcard domain." Type="Variable" Display="always" Required="false" Mask="false">https://craft-apps.example.com</Config>
+  <Config Name="Multiuser apps domain (optional)" Target="CRAFT_APPS_DOMAIN" Default="" Mode="" Description="Optional bare domain such as apps.example.com, without scheme or port. Requires wildcard DNS/TLS. MUST clear CRAFT_SINGLE_APP_URL when configured." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Enable scheduled updates" Target="CRAFT_AUTO_START_UPDATES" Default="true" Mode="" Description="true enables startup discovery and the scheduled updater; false is for offline validation." Type="Variable" Display="always" Required="true" Mask="false">true</Config>
+  <Config Name="GitHub API token (optional)" Target="GITHUB_TOKEN" Default="" Mode="" Description="Optional token for higher API limits. Leave blank unless needed. Masking hides the UI field, not Docker administrator access or saved Unraid template contents." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+</Container>
