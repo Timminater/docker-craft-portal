@@ -91,7 +91,10 @@ linux/amd64 and linux/arm64 using QEMU and
 Buildx, and boots a hardened native image. ARM64 is emulated build validation;
 verify a deployment on real ARM64 hardware before claiming native runtime
 coverage. Version tags beginning with `v` run the same complete CI gate before GHCR publishing with
-version and commit tags, SBOM and provenance. No workflow was executed or image
+version and commit tags, SBOM and provenance. After the package publish succeeds,
+the workflow creates a GitHub Release containing its immutable image digest.
+Tags with a prerelease suffix (such as `v0.1.0-rc.1`) are marked as prereleases
+and are not marked latest. Release notes live under `docs/releases/<tag>.md`. No workflow was executed or image
 published by adding this configuration. Review real-app/browser acceptance
 results before intentionally pushing a release tag. Pin deployed images by digest
 for reproducibility. Runtime app updates do not require rebuilding the image.

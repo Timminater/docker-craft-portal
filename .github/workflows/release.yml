@@ -9,6 +9,9 @@ jobs:
     uses: ./.github/workflows/ci.yml
   publish:
     needs: verify
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      digest: ${{ steps.build.outputs.digest }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -33,6 +36,7 @@ jobs:
             type=ref,event=tag
             type=sha
       - uses: docker/build-push-action@v6
+        id: build
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -43,3 +47,34 @@ jobs:
           sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+  release:
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish GitHub release with verified image digest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_IMAGE: ${{ needs.publish.outputs.image }}
+          RELEASE_DIGEST: ${{ needs.publish.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          [[ "$RELEASE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          notes="$RUNNER_TEMP/release-notes.md"
+          if [[ -f "docs/releases/$RELEASE_TAG.md" ]]; then
+            cp "docs/releases/$RELEASE_TAG.md" "$notes"
+          else
+            printf 'Docker Craft Portal %s\n' "$RELEASE_TAG" > "$notes"
+          fi
+          printf '\nPublished multiarch image (linux/amd64, linux/arm64):\n\n`%s:%s`\n\nImmutable image reference:\n\n`%s@%s`\n' "$RELEASE_IMAGE" "$RELEASE_TAG" "$RELEASE_IMAGE" "$RELEASE_DIGEST" >> "$notes"
+          options=(--verify-tag --title "Docker Craft Portal $RELEASE_TAG" --notes-file "$notes")
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            options+=(--prerelease --latest=false)
+          fi
+          gh release create "$RELEASE_TAG" "${options[@]}"
