@@ -1,4 +1,4 @@
-# Codex Cloud task: productionize Docker Craft Portal
+# Codex Cloud task: productionize Craft Portal
 
 Model requested by project owner: **GPT-6.1 Sol, Low reasoning effort**. Select it in the Codex Cloud model picker if available. Preserve code quality through small, testable sub-tasks and focused reviews, rather than increasing model cost indiscriminately.
 

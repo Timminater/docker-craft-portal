@@ -1,4 +1,4 @@
-# Codex development instructions — docker-craft-portal
+# Codex development instructions — craft-portal
 
 ## Model / cost policy
 The user's requested model is **GPT-6.1 Sol**, with **Low** reasoning effort (also described as light). Select that combination in Codex Cloud if supported; never claim the model has been selected if the Cloud UI did not confirm it. Keep tasks narrow so Low effort produces high-quality changes. For security-critical or architecturally risky work, ask for an explicit review rather than silently downgrading quality.
@@ -7,7 +7,7 @@ The user's requested model is **GPT-6.1 Sol**, with **Low** reasoning effort (al
 Build a production-worthy, self-hosted, single-Docker ArtCraft WASM portal with first-run setup, secure authentication, versioned static hosting, a trusted GitHub release updater, automatic discovery, rollback and native download links. Important defaults: check every 6 hours, auto-install new versions, discover new official apps, retain the active release + two previous versions.
 
 ## Current implementation
-Python FastAPI + SQLite + Argon2id + zero-build vanilla JS/CSS in `portal/`, `tests/` with fake release archives, multi-user origins optional via `CRAFT_APPS_DOMAIN`. This is a functional initial implementation, **not a verified production release**.
+Python FastAPI + SQLite + Argon2id + zero-build vanilla JS/CSS in `portal/`, `tests/` with fake release archives, multi-user origins optional via `CRAFT_APPS_DOMAIN`. The portal uses calendar-versioned stable releases. Document verified capabilities and remaining upstream/platform compatibility limits honestly.
 
 ## Required tests before a PR
 1. `python -m pip install -r requirements-dev.txt && python -m pytest -q`

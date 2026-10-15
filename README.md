@@ -1,8 +1,8 @@
-# Docker Craft Portal
+# Craft Portal
 
 Self-hosted, login-protected web portal for all *official* ArtCraft WebAssembly apps. **One Docker container**, no Linux desktop streaming, no per-app containers, no runtime Rust compilation. The release updater automatically discovers compatible new apps in the official [ArtCraft catalog](https://getartcraft.com/apps), downloads verified official release ZIPs, installs versions transactionally and retains the previous two releases.
 
-> **Implementation status: hardened pre-production build.** Local authentication, updater, backup, Chromium browser and hardened AMD64 container checks have been exercised. Strict Chromium/Firefox and multiarch builds passed in hosted release CI. Genuine upstream ArtCraft compatibility and native ARM64 runtime remain release gates. See [acceptance evidence](docs/ACCEPTANCE.md), [limitations](docs/KNOWN_LIMITATIONS.md), and [deployment operations](docs/deployment/README.md).
+> **Stable release: v2026.10.15.0.** Authentication, updates, backups, Chromium/Firefox browser workflows and multiarchitecture builds have been checked. Real PhotoCraft and SolidCraft releases have also been exercised. App-specific compatibility and native ARM64 runtime verification are tracked in [acceptance evidence](docs/ACCEPTANCE.md) and [known limitations](docs/KNOWN_LIMITATIONS.md).
 
 ## Features already implemented
 
@@ -63,7 +63,7 @@ Portal settings (stored in SQLite; editable in Admin UI):
 | Auto-install latest stable versions | On |
 | Auto-discover new official apps | On |
 | Previously installed versions | 2 |
-| Include prereleases | Off (locked off in current MVP) |
+| Include prereleases | Off (locked off in the current release) |
 
 Manual update button initiates a new discovery cycle. On failure, the currently installed version remains usable.
 

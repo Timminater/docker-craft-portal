@@ -108,7 +108,7 @@ class Artwork:
 
     def _fetch(self, slug: str, kind: str) -> bytes:
         url = f'https://getartcraft.com/images/apps/{slug}/{kind}.webp'
-        request = Request(url, headers={'User-Agent': 'Docker-Craft-Portal/1', 'Accept': 'image/webp'})
+        request = Request(url, headers={'User-Agent': 'Craft-Portal/1', 'Accept': 'image/webp'})
         with self.opener.open(request, timeout=5) as response:
             if not trusted_url(response.geturl()):
                 raise ValueError('Invalid artwork response origin')

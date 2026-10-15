@@ -1,13 +1,13 @@
 # Install on Unraid
 
 The repository supplies a Docker **version 2 user template** at
-[`unraid/docker-craft-portal.xml`](../unraid/docker-craft-portal.xml). This is a
+[`unraid/craft-portal.xml`](../unraid/craft-portal.xml). This is a
 manual installation option, not a Community Applications listing or submission.
-It uses `ghcr.io/timminater/docker-craft-portal:latest` for normal Unraid updates.
-The current image is the verified `v0.1.0-rc.9` candidate; use a version tag if you prefer a pinned installation. The image is publicly published for AMD64 and ARM64; its release workflow passed
+It uses `ghcr.io/timminater/craft-portal:latest` for normal Unraid updates.
+The current stable image is `v2026.10.15.0`; use a version tag if you prefer a pinned installation. The image is publicly published for AMD64 and ARM64; its release workflow passed
 unit, Chromium/Firefox and multiarch container checks. See the
-[release](https://github.com/Timminater/docker-craft-portal/releases/tag/v0.1.0-rc.9)
-and [package](https://github.com/Timminater/docker-craft-portal/pkgs/container/docker-craft-portal). Review
+[release](https://github.com/Timminater/craft-portal/releases/tag/v2026.10.15.0)
+and [package](https://github.com/Timminater/craft-portal/pkgs/container/craft-portal). Review
 [acceptance evidence](ACCEPTANCE.md) and [known limitations](KNOWN_LIMITATIONS.md)
 before public deployment. Installing a template does not verify production readiness.
 
@@ -15,7 +15,7 @@ before public deployment. Installing a template does not verify production readi
 
 Download the raw XML from:
 
-<https://raw.githubusercontent.com/Timminater/docker-craft-portal/main/unraid/docker-craft-portal.xml>
+<https://raw.githubusercontent.com/Timminater/craft-portal/main/unraid/craft-portal.xml>
 
 On the Unraid terminal, save it as a user template (review downloaded content
 before applying):
@@ -23,14 +23,14 @@ before applying):
 ```sh
 mkdir -p /boot/config/plugins/dockerMan/templates-user
 curl --fail --location --proto '=https' --tlsv1.2 \
-  https://raw.githubusercontent.com/Timminater/docker-craft-portal/main/unraid/docker-craft-portal.xml \
-  -o /boot/config/plugins/dockerMan/templates-user/my-docker-craft-portal.xml
+  https://raw.githubusercontent.com/Timminater/craft-portal/main/unraid/craft-portal.xml \
+  -o /boot/config/plugins/dockerMan/templates-user/my-craft-portal.xml
 ```
 
 Then open **Docker → Add Container** and select the installed
-`docker-craft-portal` user template. Alternatively, if your Unraid version has
+`craft-portal` user template. Alternatively, if your Unraid version has
 **Docker → Template Repositories**, add
-`https://github.com/Timminater/docker-craft-portal`, save/reload templates and
+`https://github.com/Timminater/craft-portal`, save/reload templates and
 select its template. If repository discovery does not find the XML, use the
 explicit `templates-user` installation above.
 
@@ -108,3 +108,12 @@ container is recreated. Before changing images, create a consistent backup and
 follow the [backup and recovery guide](deployment/README.md). Pinning the image
 tag makes portal upgrades deliberate; app release updates happen independently
 without rebuilding the portal container.
+
+## Renaming an existing installation
+
+Use `ghcr.io/timminater/craft-portal:latest` as Repository and `craft-portal` as
+the container/template name. Keep your existing host appdata directory mapped to
+`/data` and retain the origin/environment settings. The container name does not
+require moving the appdata folder. The old `docker-craft-portal` image remains a
+compatibility alias for existing installations; use the new name for new setups.
+The user template is now `unraid/craft-portal.xml`.

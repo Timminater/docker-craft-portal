@@ -110,3 +110,7 @@ for reproducibility. Runtime app updates do not require rebuilding the image.
 Optional `GITHUB_TOKEN` can increase API limits. Inject it with your deployment
 secret manager; never store its value in Git or container build arguments. Docker
 administrators can inspect runtime environment values, so limit daemon access.
+
+Stable portal releases use calendar tags such as `v2026.10.15.0` and are published
+as GitHub releases without the prerelease flag. The canonical image is
+`ghcr.io/timminater/craft-portal:latest`; an explicit calendar tag is also available.

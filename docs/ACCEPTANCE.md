@@ -28,7 +28,7 @@ Test certificates and synthetic app files never represent real upstream acceptan
 
 ## Hosted release validation
 
-The [v0.1.0-rc.1 workflow](https://github.com/Timminater/docker-craft-portal/actions/runs/38722248221)
+The [v0.1.0-rc.1 workflow](https://github.com/Timminater/craft-portal/actions/runs/38722248221)
 completed successfully on 2026-10-15: unit tests, strict Chromium/Firefox browser
 job, AMD64/ARM64 image builds, native hardened-container checks, GHCR publishing
 and GitHub prerelease creation all passed. This supersedes the earlier local-only

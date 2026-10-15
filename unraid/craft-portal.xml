@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Container version="2">
-  <Name>docker-craft-portal</Name>
-  <Repository>ghcr.io/timminater/docker-craft-portal:latest</Repository>
-  <Registry>https://github.com/Timminater/docker-craft-portal/pkgs/container/docker-craft-portal</Registry>
+  <Name>craft-portal</Name>
+  <Repository>ghcr.io/timminater/craft-portal:latest</Repository>
+  <Registry>https://github.com/Timminater/craft-portal/pkgs/container/craft-portal</Registry>
   <Network>bridge</Network>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/Timminater/docker-craft-portal/issues</Support>
-  <Project>https://github.com/Timminater/docker-craft-portal</Project>
-  <Overview>Self-hosted authenticated ArtCraft WASM portal. Release candidate: review the repository acceptance evidence before public deployment. REQUIRED: replace both example hostnames, configure HTTPS reverse proxy preserving Host, and prepare appdata ownership for UID/GID 10001. App code must use a different origin from the portal. This template is manually installed; it is not a Community Applications listing.</Overview>
+  <Support>https://github.com/Timminater/craft-portal/issues</Support>
+  <Project>https://github.com/Timminater/craft-portal</Project>
+  <Overview>Self-hosted authenticated ArtCraft WASM portal. REQUIRED: replace both example hostnames, configure HTTPS reverse proxy preserving Host, and prepare appdata ownership for UID/GID 10001. App code must use a different origin from the portal. This template is manually installed; it is not a Community Applications listing.</Overview>
   <Category>Productivity:</Category>
-  <Icon>https://raw.githubusercontent.com/Timminater/docker-craft-portal/main/unraid/icon.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/Timminater/craft-portal/main/unraid/icon.svg</Icon>
   <WebUI>https://craft.example.com</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/Timminater/docker-craft-portal/main/unraid/docker-craft-portal.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/Timminater/craft-portal/main/unraid/craft-portal.xml</TemplateURL>
   <ExtraParams>--read-only --tmpfs /tmp:size=64m,mode=1777,noexec,nosuid --cap-drop=ALL --security-opt=no-new-privileges:true --pids-limit=128 --stop-timeout=120 --log-driver=json-file --log-opt=max-size=10m --log-opt=max-file=3</ExtraParams>
   <Config Name="Portal port" Target="8080" Default="8080" Mode="tcp" Description="Backend HTTP port. Restrict access to the trusted HTTPS reverse proxy; do not expose this port publicly." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
   <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/craft-portal" Mode="rw" Description="Prepare this directory as UID/GID 10001 with mode 0700 before first start. Contains private database and downloaded app versions." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/craft-portal</Config>

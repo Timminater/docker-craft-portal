@@ -148,7 +148,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         updater.stop()
         db.close()
 
-    app=FastAPI(title="Docker Craft Portal",docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
+    app=FastAPI(title="Craft Portal",docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
     app.add_middleware(RequestBodyLimit)
     # Bound authentication attempts per remote peer and username without trusting spoofable X-Forwarded-For.
     login_attempts = defaultdict(deque)

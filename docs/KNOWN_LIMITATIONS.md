@@ -1,7 +1,7 @@
 # Release gates and known limitations
 
-This is a hardened pre-production build. It must not be called production-ready
-until the outstanding upstream and platform acceptance gates below pass. See
+This document records the tested scope and remaining upstream/platform checks
+for stable Craft Portal releases. See
 [acceptance evidence](ACCEPTANCE.md) and [implementation review](SECURITY_REVIEW.md).
 
 ## Verified locally

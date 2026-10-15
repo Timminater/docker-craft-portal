@@ -221,7 +221,7 @@ class Updater:
         allowed = {"api.github.com", "getartcraft.com", "www.getartcraft.com"}
         if p.scheme != "https" or p.hostname not in allowed or p.port not in (None,443) or p.username or p.password:
             raise InstallError("Disallowed metadata URL")
-        headers = {"User-Agent":"docker-craft-portal/0.1 (+https://github.com/Timminater/docker-craft-portal)","Accept":"application/vnd.github+json" if p.hostname=="api.github.com" else "text/html"}
+        headers = {"User-Agent":"craft-portal/2026.10.15.0 (+https://github.com/Timminater/craft-portal)","Accept":"application/vnd.github+json" if p.hostname=="api.github.com" else "text/html"}
         if p.hostname=="api.github.com" and self.cfg.github_token:
             headers["Authorization"] = "Bearer " + self.cfg.github_token
         with self.opener.open(Request(url,headers=headers),timeout=25) as response:
@@ -239,7 +239,7 @@ class Updater:
                 or p.username or p.password or p.query or p.fragment
                 or not (p.path.startswith(f"/{self.cfg.trusted_owner}/") or additional)):
             raise InstallError("Untrusted asset URL")
-        headers = {"User-Agent":"docker-craft-portal/0.1"}
+        headers = {"User-Agent":"craft-portal/2026.10.15.0"}
         total=0; h=hashlib.sha256()
         with self.opener.open(Request(url,headers=headers),timeout=90) as response, destination.open("xb") as f:
             while True:
