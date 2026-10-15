@@ -96,3 +96,25 @@ See SECURITY_REVIEW.md for controls/residual risks, KNOWN_LIMITATIONS.md for rel
 gates, browser-testing.md for test fixtures, and deployment/README.md for HTTPS,
 Unraid, GHCR and backup/restore. No production-ready claim is made while the
 blocked acceptance work remains outstanding.
+
+## PhotoCraft real-release browser check (2026-10-15)
+
+Official archive:
+`https://github.com/storytold/photocraft/releases/download/v0.9.0/photocraft-web-0.9.0.zip`.
+Downloaded size: 11,467,035 bytes. SHA-256 matched the publisher digest shown
+on GitHub's expanded release assets:
+`b3fa5ab6a9d32bc5ff7dfdde31939a2337471a196a2e70f1ff961a61b1bb02e6`.
+The normal bounded archive unpacker installed the archive under a versioned path.
+A local HTTPS shared-host portal with a synthetic account opened the full editor
+inside the dock workspace and separately. JS/WASM returned 200 with correct MIME;
+no JS exceptions or failed requests occurred. The optional upstream
+`fonts/manifest.txt` is missing in the ZIP (404), without preventing editor startup.
+Headless rendering used the software GPU fallback. No production login was used.
+
+![Real PhotoCraft editor inside the compact workspace](images/workspace-real-photocraft.png)
+
+This verifies startup of one real version in Chromium, not editing/export features,
+all apps, Firefox real-app support or the operator's DNS/proxy/TLS deployment.
+The live portal request is denied by the managed cloud proxy before navigation.
+The reported operator error `SSL_ERROR_UNRECOGNIZED_NAME_ALERT` occurs at TLS/SNI
+negotiation before the portal serves the app. See workspace.md for resolution.

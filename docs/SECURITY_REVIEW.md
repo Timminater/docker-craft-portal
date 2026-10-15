@@ -72,3 +72,16 @@ unsaved forms when identity stays the same. Server revocation cannot erase brows
 documents, service-worker caches or state in an independently opened app tab.
 Same-site HTTPS app hosts are recommended for the retained cookie policy; other
 setups use the separate-window fallback instead of weakening cookie settings.
+
+## Official artwork cache review
+
+Presentation image routes require an authenticated portal session and known app;
+app hosts cannot use them. The fetcher has a separate opener with no release/API
+credentials, exact HTTPS official-host redirect/final-origin checks, bounded
+redirects, a five-second socket timeout and a 2 MiB read bound. WebP envelope
+checks reject HTML/error responses. Cache writes are atomic and failed fetches
+are negatively cached. Bundled icons have pinned upstream provenance and MIT
+attribution. Artwork networking is optional; unavailable artwork returns a local
+200 fallback without loosening the portal's self-only image CSP. A separate
+read-only review found no concrete blockers. TLS/SNI deployment failures occur
+before these HTTP routes and cannot be remediated by their authentication policy.

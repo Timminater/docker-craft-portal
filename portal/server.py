@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from .artwork import Artwork, KINDS
 from .auth import APP_COOKIE, PORTAL_COOKIE, Auth, digest
 from .config import Config
 from .database import Database
@@ -117,6 +118,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
     db = Database(cfg.data_dir/"database"/"portal.sqlite")
     auth = Auth(db)
     updater = Updater(cfg,db)
+    artwork = Artwork(cfg.data_dir, STATIC, network=cfg.auto_start_updates)
     if start_updater is None: start_updater=cfg.auto_start_updates
 
     @asynccontextmanager
@@ -154,6 +156,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
                     if not q or now-q[-1]>60: del login_attempts[key]
 
     app.state.cfg,app.state.db,app.state.auth,app.state.updater = cfg,db,auth,updater
+    app.state.artwork = artwork
     single_host = urlparse(cfg.single_app_url).netloc.lower() if cfg.single_app_url else ""
     app_host = re.compile(rf"^(?P<slug>[a-z][a-z0-9]{{1,29}}craft)--(?P<publicid>[0-9a-f]{{12}})\.{re.escape(cfg.apps_domain)}$",re.I) if cfg.isolated_app_origins else None
 
@@ -253,6 +256,16 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         if filename not in {"app.css","app.js"}:
             raise HTTPException(404)
         return FileResponse(STATIC/filename,headers={"Cache-Control":"no-cache"})
+
+    @app.get("/static/artcraft/{slug}/{kind}.webp")
+    def app_artwork(slug: str, kind: str, request: Request, s: dict = Depends(session)):
+        if not SLUG.fullmatch(slug) or kind not in KINDS:
+            raise HTTPException(404)
+        record = db.one("SELECT disabled FROM apps WHERE slug=?", (slug,))
+        if not record or (record["disabled"] and s["role"] != "admin"):
+            raise HTTPException(404)
+        data, media_type = artwork.get(slug, kind)
+        return Response(data, media_type=media_type, headers={"Cache-Control": "private, no-store"})
 
     @app.get("/_i18n.js")
     async def i18n_js(request:Request):

@@ -18,7 +18,10 @@ until the outstanding upstream and platform acceptance gates below pass. See
 - Hardened native AMD64 container, persistent SQLite volume/restart, nginx
   configuration syntax, and checksum-verified offline backup/restore.
 
-Synthetic fixtures prove portal behavior, not compatibility with ArtCraft releases.
+Synthetic fixtures prove portal behavior. Additionally, the checksum-verified official
+PhotoCraft v0.9.0 release renders its full editor embedded and standalone under
+local HTTPS. Its missing optional font manifest gives a non-blocking 404. This
+does not validate all apps or the operator's DNS/TLS deployment.
 
 ## Required before production release
 

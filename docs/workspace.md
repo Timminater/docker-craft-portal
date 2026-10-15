@@ -97,3 +97,44 @@ wildcard account-origin and cookie rejection tests remain in the suite.
 This is not evidence of every genuine ArtCraft app's iframe, WebGPU or service-
 worker compatibility. Real official releases require separate acceptance checks;
 the current cloud network blocks the live operator host and official catalog/API.
+
+## TLS errors when opening an app
+
+`SSL_ERROR_UNRECOGNIZED_NAME_ALERT` means the TLS endpoint rejected the app
+hostname (SNI) before any portal HTTP request or app code could run. Updating the
+Docker image cannot create DNS records, proxy hosts or certificates.
+
+For shared-host mode, set `CRAFT_SINGLE_APP_URL` to an actual, separately
+configured HTTPS hostname, clear `CRAFT_APPS_DOMAIN`, and enable
+`CRAFT_SHARED_APP_MULTI_USER`. In the reverse proxy, add that exact hostname and a
+valid ordinary certificate, forwarding it to the same portal backend and port.
+Preserve the original Host header. Remove example hostnames from container settings.
+
+Open the bare app origin directly in a browser, with no ticket fragment. It
+should show the portal bridge's instruction to open apps through the portal,
+without any certificate warning. If this fails, fix DNS/proxy/TLS first. A random
+`<app>--<user>.apps...` hostname means wildcard mode is still configured; that mode
+requires wildcard DNS/TLS. Use the fixed shared hostname for installations without it.
+
+## Official artwork and compact dock
+
+The dock is 52 CSS pixels high plus the device safe area. Icons are centered,
+scroll horizontally on narrow screens, and enlarge slightly on pointer hover.
+Keyboard labels/tooltips and reduced-motion preferences are preserved.
+
+App icons and card heroes are requested from the official site's
+`https://getartcraft.com/images/apps/<slug>/{icon,hero}.webp`, cached under
+`/data/artwork`, and served through the authenticated portal origin. Downloads
+are bounded and redirects stay on official HTTPS hosts. Cached artwork remains
+available offline; failed downloads retry after one hour. To refresh a cached
+image, remove its corresponding file from `/data/artwork` while the container is
+stopped. Bundled official PNG icons and local placeholder art cover unavailable
+images without broken-image errors. `CRAFT_AUTO_START_UPDATES=false` disables
+artwork networking as well as update discovery. Browsers never contact the artwork
+site directly. See `portal/static/artcraft/README.md` for icon provenance/licensing.
+
+PhotoCraft v0.9.0 has now also been tested from its actual official release ZIP,
+with the publisher's SHA-256 verified: both embedded and separate editor startup
+render correctly under local HTTPS. The optional `fonts/manifest.txt` is absent
+from that upstream ZIP and returns a non-blocking 404. This does not validate all
+apps or the operator's DNS/TLS deployment.

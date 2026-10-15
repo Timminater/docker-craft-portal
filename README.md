@@ -153,3 +153,7 @@ checksum-verified backup/restore are documented in [deployment operations](docs/
 ## Licensing
 
 Portal starter code is offered under the MIT license. This repository does **not** redistribute ArtCraft release binaries; users running the container fetch ArtCraft upstream assets under their respective licenses. Retain license notices packaged within each upstream web release.
+
+The compact workspace dock uses official Craft app icons and card heroes, cached
+locally from getartcraft.com with offline fallbacks. See [workspace setup and TLS
+troubleshooting](docs/workspace.md) for app-host connection errors and artwork behavior.

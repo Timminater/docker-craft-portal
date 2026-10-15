@@ -181,17 +181,27 @@ tr:last-child td{border-bottom:0}
 @media(prefers-reduced-motion:reduce){.app-card:hover{transform:none}}
 /* The workspace is a stable sibling of the rendered portal: app frames survive navigation. */
 [hidden]{display:none!important}
-body.has-dock{padding-bottom:100px}
-.workspace-dock{position:fixed;z-index:30;bottom:0;left:0;right:0;display:flex;gap:8px;align-items:center;overflow-x:auto;padding:10px 18px max(10px,env(safe-area-inset-bottom));background:#101b2cf5;border-top:1px solid var(--line);box-shadow:0 -8px 30px #0003}
-.dock-app{border:1px solid transparent;background:transparent;color:var(--muted);min-width:78px;max-width:110px;padding:6px 8px;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;font-size:.7rem;position:relative}
-.dock-app>span:last-child{max-width:95px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.has-dock{padding-bottom:calc(52px + env(safe-area-inset-bottom,0px))}
+.workspace-dock{position:fixed;z-index:30;bottom:0;left:0;right:0;height:calc(52px + env(safe-area-inset-bottom,0px));display:flex;justify-content:safe center;gap:4px;align-items:center;overflow-x:auto;overflow-y:hidden;padding:3px 12px calc(3px + env(safe-area-inset-bottom,0px));background:#101b2c;border-top:1px solid var(--line);box-shadow:0 -5px 18px #0003;box-sizing:border-box;scrollbar-width:none}
+.workspace-dock::-webkit-scrollbar{display:none}
+.dock-app{border:1px solid transparent;background:transparent;color:var(--muted);width:46px;height:44px;padding:4px;border-radius:8px;display:grid;place-items:center;flex-shrink:0;position:relative}
+.dock-app>span:last-child:not(.dock-icon){position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .dock-app.selected{background:var(--card2);border-color:var(--accent);color:var(--text)}
-.dock-app.running:after{content:'';position:absolute;bottom:1px;width:16px;height:3px;border-radius:3px;background:var(--accent)}
+.dock-app.running:after{content:'';position:absolute;bottom:0;width:12px;height:3px;border-radius:3px;background:var(--accent)}
 .dock-app:hover:not(:disabled){background:var(--card2);color:var(--text)}
 .dock-app:disabled{opacity:.4;cursor:not-allowed}
-.dock-icon{width:40px;height:32px;display:grid;place-items:center;color:var(--accent);font-size:28px}
-.dock-icon svg{width:52px;height:32px}
-.workspace-stage{position:fixed;inset:0 0 94px;z-index:25;background:var(--bg);display:flex;flex-direction:column}
+.dock-icon{width:32px;height:32px;display:grid;place-items:center;color:var(--accent);font-size:27px;transition:transform .16s ease;transform-origin:50% 85%;pointer-events:none}
+.dock-icon svg{width:38px;height:32px}
+.official-art{position:relative;display:block;width:100%;height:100%;overflow:hidden}
+.official-art img{display:block;width:100%;height:100%;object-fit:contain}
+.official-art .art-fallback{display:none;width:100%;height:100%;align-items:center;justify-content:center}
+.official-art.art-failed .art-fallback{display:flex}
+.official-icon{overflow:visible}.official-icon img{border-radius:6px}
+.card-art>.official-hero{position:absolute;inset:0;width:100%;height:100%}
+.official-hero{color:var(--art-ink)}.official-hero img{object-fit:cover}
+.official-hero .art-fallback svg{width:100%;height:100%}
+@media(hover:hover) and (pointer:fine){.dock-app:hover:not(:disabled) .dock-icon,.dock-app:focus-visible .dock-icon{transform:translateY(-1px) scale(1.28)}.dock-app:has(+.dock-app:hover) .dock-icon,.dock-app:hover+.dock-app .dock-icon{transform:scale(1.1)}}
+.workspace-stage{position:fixed;inset:0 0 calc(52px + env(safe-area-inset-bottom,0px));z-index:25;background:var(--bg);display:flex;flex-direction:column}
 .workspace-toolbar{min-height:74px;display:flex;justify-content:space-between;gap:16px;align-items:center;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--sidebar)}
 .workspace-status{display:block;max-width:620px;font-size:.76rem}
 .workspace-actions{display:flex;gap:8px;flex-shrink:0}
@@ -199,10 +209,10 @@ body.has-dock{padding-bottom:100px}
 .workspace-frames{flex:1;min-height:0;position:relative;background:#111}
 .workspace-frames iframe{border:0;display:block;width:100%;height:100%;background:#111}
 .workspace-visible{overflow:hidden}
-@media(max-width:760px){.workspace-toolbar{padding:10px;gap:8px;align-items:flex-start;flex-direction:column}.workspace-actions{width:100%;overflow-x:auto}.workspace-actions button{white-space:nowrap}.workspace-status{max-width:100%}.workspace-dock{padding-left:6px;padding-right:6px;gap:2px}.dock-app{min-width:72px}.workspace-stage{bottom:94px}}
+@media(max-width:760px){.workspace-toolbar{padding:10px;gap:8px;align-items:flex-start;flex-direction:column}.workspace-actions{width:100%;overflow-x:auto}.workspace-actions button{white-space:nowrap}.workspace-status{max-width:100%}.workspace-dock{padding-left:6px;padding-right:6px;gap:2px}.dock-app{width:44px}}
 /* Dialogs and error feedback must remain above the persistent app workspace. */
 .modal-back{z-index:60}.toast{z-index:70}
-body.has-dock{padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))}
-.workspace-stage{bottom:calc(94px + env(safe-area-inset-bottom,0px))}
-.workspace-dock{height:calc(94px + env(safe-area-inset-bottom,0px));box-sizing:border-box;background:#101b2c}
+@media(prefers-reduced-motion:reduce){.dock-icon{transition:none}.dock-app .dock-icon{transform:none!important}}
 @media(max-width:760px){.workspace-actions{flex-wrap:wrap;overflow-x:visible}}
+body.has-dock .app-shell{min-height:calc(100vh - 52px - env(safe-area-inset-bottom,0px))}
+@media(min-width:591px){body.has-dock .sidebar{height:calc(100vh - 52px - env(safe-area-inset-bottom,0px))}}
