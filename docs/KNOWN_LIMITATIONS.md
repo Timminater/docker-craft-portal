@@ -1,31 +1,75 @@
-# Known limitations / production gate
+# Release gates and known limitations
 
-This is an initial runnable implementation, not a fully field-tested release. Real downstream ArtCraft web builds and networked Docker deployment have **not** been verified from this environment.
+This is a hardened pre-production build. It must not be called production-ready
+until the outstanding upstream and platform acceptance gates below pass. See
+[acceptance evidence](ACCEPTANCE.md) and [implementation review](SECURITY_REVIEW.md).
 
-## Must verify or fix before public exposure
+## Verified locally
 
-- [ ] Actual GitHub `releases/latest` JSON for all 13 apps returns SHA-256 digest and an expected `*-web-<version>.zip` asset. Test against upstream, not only synthetic ZIPs.
-- [ ] Official catalog `/apps` exposes all app links and publisher repo confirmation on every app detail page.
-- [ ] Actual app ZIP layout, favicon/fonts, service workers, optional COOP/COEP and WebGPU loads in Chromium/Firefox (especially FilmCraft, EffectCraft, LightCraft).
-- [ ] Browser automation covers an authenticated app launch end-to-end on real files and failed/in-progress downloads.
-- [ ] Full multiuser wildcard DNS and TLS demonstration; cross-account asset and OPFS isolation with the same browser profile, including logout/revocation.
-- [ ] Verify both the public portal hostname and a separate public app hostname/wildcard (they MUST NOT be the same browser origin); reverse proxy configuration with trusted preserved Host, restricted direct 8080, HTTPS, timeouts and appropriate `/api/login` rate limiting.
-- [ ] GitHub Actions cross-arch images published via tags (current workflow runs tests and builds a container but intentionally does not publish unverified images).
-- [ ] External security review for untrusted upstream JavaScript running on separately scoped origins; supply-chain integrity is not a proof upstream is harmless.
-- [ ] Production backup and restore for SQLite (including WAL files safely) and app storage, plus disaster-recovery drill.
-- [ ] Login rate limiting is currently process-local, not distributed or persistent across restarts; add edge rate limits before exposing publicly.
+- Authentication, session expiry/revocation, CSRF, request bounds, hostname and
+  origin validation, HTTPS `__Host-` cookies and responsive password verification.
+- ZIP directory compatibility, traversal/link/collision rejection, required
+  SHA-256, bounded downloads, interrupted/bad downloads preserving the active
+  release, serialized rollback, retention and six-hour scheduler behavior.
+- Chromium setup/login/logout/admin, authenticated synthetic WASM compilation,
+  rollback, reconnect/restart, installer filtering, modal keyboard behavior,
+  polling error recovery, and two accounts in one browser profile with distinct
+  HTTPS app origins and storage.
+- Hardened native AMD64 container, persistent SQLite volume/restart, nginx
+  configuration syntax, and checksum-verified offline backup/restore.
 
-## Deliberately not yet implemented
+Synthetic fixtures prove portal behavior, not compatibility with ArtCraft releases.
 
-- Central document storage and sync across webapps and devices (upstream WASM apps commonly use browser localStorage/OPFS/IndexedDB or export to downloads).
-- OIDC/SSO, recovery emails, TOTP, self-service password resets, invitations.
-- Uploading local packages, custom publishers, unsigned web ZIP support, prerelease installation.
-- Actively probing browser tabs to defer file cleanup beyond the retention policy; an open page on an older version may fail to load lazily fetched assets after enough updates.
-- Disabling user accounts keeps local browser OPFS data on that user's device. Use separate browser profiles if devices are shared.
-- Per-app encrypted backing storage and protection against browser extensions/compromised clients.
+## Required before production release
 
-## Security notes
+- [ ] Actual official catalog and publisher pages discover every current app.
+- [ ] Every latest stable official ZIP has the supported name, bounded size and
+  SHA-256 digest. Missing digests fail closed; do not bypass validation.
+- [ ] All real apps load HTML/JS/WASM and relative assets on authenticated version
+  paths, including service workers, OPFS, COOP/COEP and WebGPU where required.
+- [ ] Chromium and Firefox real-app workflows pass. Local Firefox download was
+  blocked by the managed egress policy; both engines are configured in strict CI.
+- [ ] ARM64 image builds and runtime are tested. Local machine has no ARM64
+  QEMU/binfmt support. Hosted multiarch build configuration is not execution proof.
+- [ ] Hosted CI passes, followed by an intentional tagged release and verified
+  GHCR image digest. No production image or release has been published here.
+- [ ] Real DNS/TLS and reverse proxy preserve Host and security headers, keep
+  backend port private, and apply client rate limits. Test deployment certificate
+  rotation and restore operations with the actual volume and operator identity.
+- [ ] External review of release supply chain and upstream JavaScript trust;
+  complete deployment-specific threat assessment before public exposure.
 
-The app validates GitHub digest metadata and the official publisher identity, but it still executes third-party JS/WASM in end-user browsers. The updater can change app code every six hours. This is explicitly opted into by the owner; install only trusted official apps and maintain the admin audit log.
+The current managed environment blocks `getartcraft.com` and `api.github.com`
+with proxy HTTP 403. Browser distribution downloads are also blocked. Required
+domains have been saved in the environment configuration draft; saving a draft
+does not change the running network policy. See ACCEPTANCE.md for commands and
+precise remaining work.
 
-Set up an HTTPS reverse proxy, keep admin login and Docker logs private, and restrict public network exposure until the above checks pass. The current single-user mode intentionally refuses additional accounts. Its app code is served from a separate origin from the admin portal; individual apps on the single-user app hostname still share browser storage with other app code on that hostname. To isolate each app use CRAFT_APPS_DOMAIN with per-user/app hostnames.
+## Operational limitations
+
+- One application worker; login/setup limits and CSRF key are process-local.
+  Use edge rate limiting. Restart changes CSRF keys; reload portal pages afterward.
+- HTTPS sessions now use `__Host-` cookies. Existing MVP HTTPS sessions need a
+  fresh login. HTTP localhost development keeps the original cookie names.
+- Logout/disable revoke server access, not previously downloaded browser data.
+  Upstream service workers can explicitly cache app responses despite HTTP
+  no-store. OPFS/IndexedDB remain on devices; separate browser profiles are
+  recommended for shared devices.
+- Single-user deployments share one app origin among apps. Multi-user wildcard
+  origins isolate account/app storage; they do not synchronize or encrypt files.
+- Keep active + configured previous releases. A tab on a version removed by
+  retention can fail on a later lazy asset load; tabs are not tracked.
+- Rollback changes app code and pauses its automatic updates, not document formats
+  or browser storage. Export projects before upgrades where needed.
+- Backup helper requires every portal/updater writer stopped. Snapshot checksums
+  detect corruption, not tampering by an attacker who controls the manifest.
+  No online snapshot guarantee, encryption/key management, or power-loss guarantee
+  is claimed. Browser projects are outside server backups.
+- Shutdown waits for updater network operations to finish/cancel; socket timeouts
+  can delay exit. Compose allows 120 seconds. Abrupt termination and full disk
+  recovery still require operational monitoring and available disk capacity.
+
+## Deliberately outside scope
+
+Central document synchronization, OIDC/SSO, MFA, recovery emails/password resets,
+custom/unsigned publishers, prerelease installs and cloud storage automation.

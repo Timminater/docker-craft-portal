@@ -1,0 +1,79 @@
+# Implementation and acceptance evidence — 2026-10-15
+
+Scope: CODEX_TASK.md productionization, using separate authentication/security,
+updater, frontend, packaging, browser integration and independent review agents.
+The existing MVP was retained and improved. No model-picker state was changed or
+claimed. This report distinguishes tested behavior from configured or blocked work.
+
+## Executed results
+
+| Check | Result |
+| --- | --- |
+| `CRAFT_VENV_DIR=/workspace/venvs/craft-portal bash .codex/setup.sh` | 64 passed, 4 browser tests explicitly skipped; Python compile and both JavaScript syntax checks passed |
+| `CRAFT_BROWSER_TESTS=1 PLAYWRIGHT_BROWSERS_PATH=/workspace/cache/ms-playwright python -m pytest tests/browser -q` | 2 Chromium tests passed; 2 Firefox tests skipped because executable download was blocked |
+| Chromium single-user integration | Setup, login/logout, CSRF, actual minimal WASM instantiateStreaming, separate app origin, rollback, offline/reconnect, reconstructed application/database restart, keyboard/modal, installer platform filtering, polling503/retry preserving unsaved settings |
+| Chromium multi-user HTTPS integration | Two accounts in the same browser profile, separate app origins, localStorage and OPFS separation, unauthorized/cross-host copied-cookie rejection |
+| Download/update regressions | Required digest, size/truncation/digest failures preserve active version, normal ZIP directories accepted, malicious paths/links/file collisions rejected, retention after rollback, serialized mutation, immediate then six-hour background checks |
+| Backup/recovery regressions | WAL-safe SQLite backup, file checksums, corruption/link rejection, no overwrite, restored login and retained app launch, old sessions revoked |
+| Native Docker build/runtime | AMD64 build; UID10001, read-only root, dropped capabilities, no-new-privileges, writable private data volume, health, SQLite and restart persistence |
+| `docker compose config --quiet` | Passed |
+| nginx HTTPS example | `nginx -t` passed in nginx:1.28-alpine with temporary test certificate |
+| Independent implementation review | No concrete code blockers reported; service-worker local-cache and deployment boundaries recorded in SECURITY_REVIEW.md |
+| Live official-release verifier | Failed before discovery; report contains zero verified apps and URLError; direct catalog/API checks show CONNECT403 from managed egress proxy |
+
+One Starlette/AnyIO deprecation warning is emitted by TestClient; tests execute
+and pass. It is not a test failure. Browser tests are opt-in locally; CI sets
+`CRAFT_REQUIRE_BROWSERS=1` so missing engines/dependencies fail instead of skip.
+Test certificates and synthetic app files never represent real upstream acceptance.
+
+## Reproduce
+
+From the checkout, use Python3.12 and Node for syntax checks:
+
+```sh
+bash .codex/setup.sh
+. .venv/bin/activate
+python -m pip install -r requirements-browser.txt
+python -m playwright install --with-deps chromium firefox
+CRAFT_BROWSER_TESTS=1 CRAFT_REQUIRE_BROWSERS=1 python -m pytest tests/browser -q
+python scripts/verify_official_releases.py --run-live --report /tmp/craft-releases.json
+docker compose config --quiet
+docker build -t craft-portal:test .
+```
+
+The live verifier downloads every catalog app into temporary storage, checks
+publisher and digest, then requests authenticated HTML/JS/WASM and records MIME,
+COOP/COEP and service-worker filenames. It does not execute those real apps in a
+browser. Real-app browser/WebGPU/service-worker acceptance remains required.
+
+Managed cloud builds need the session proxy and CA mounted during pip installation;
+use the saved environment startup instructions or retained cloud build helper.
+Local Linux developers with normal trusted Internet do not need this adaptation.
+Never disable TLS/checksum verification. Browser TLS isolation binds443; use a
+free local port443 and the documented test-only permissions on a CI runner.
+
+## Blocked / not executed
+
+1. **Official releases:** managed network rejects getartcraft.com and api.github.com.
+   Required allowed domains were saved in the environment draft, including official
+   release redirect hosts. Review/save the environment settings to apply them;
+   retry discovery and verify every genuine ZIP and app in both browsers.
+2. **Firefox:** official Playwright CDN returned403 Domain forbidden. Browser
+   distribution hosts were added to that same draft. Install the pinned browser
+   after network access is applied and run strict browser acceptance.
+3. **ARM64:** no qemu-aarch64-static/binfmt support; Buildx advertises only amd64.
+   CI uses QEMU for multiarch builds. A native ARM64 deployment test remains needed.
+4. **Hosted actions / images:** workflows were written and YAML parsed, but hosted
+   CI and GHCR publishing were not observed. Tagged release reuses the complete CI
+   gate before publishing version/commit tags with SBOM and provenance. Do not tag
+   a production release before the real-app gates pass.
+5. **Deployment:** real public DNS/TLS, Unraid ownership and operational restore
+   must be validated on the target host. The supplied example and local checks do
+   not establish those external deployment properties.
+
+## Delivery review
+
+See SECURITY_REVIEW.md for controls/residual risks, KNOWN_LIMITATIONS.md for release
+gates, browser-testing.md for test fixtures, and deployment/README.md for HTTPS,
+Unraid, GHCR and backup/restore. No production-ready claim is made while the
+blocked acceptance work remains outstanding.

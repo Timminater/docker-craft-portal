@@ -57,6 +57,48 @@ def test_zip_slip_and_symlinks_rejected(tmp_path):
     with pytest.raises(InstallError):unpack_archive(bad,tmp_path/'extract2','photocraft','v0.9.0',100000)
 
 
+def test_zip_explicit_directories_are_supported(tmp_path):
+    archive=tmp_path/'release.zip'
+    with zipfile.ZipFile(archive,'w') as z:
+        z.writestr('release/','')
+        z.writestr('release/assets/','')
+        z.writestr('release/index.html','<html></html>')
+        z.writestr('release/assets/app.js','console.log(1)')
+        z.writestr('release/assets/app.wasm',b'\0asm')
+    unpack_archive(archive,tmp_path/'app','photocraft','v0.9.0',100000)
+    assert (tmp_path/'app/index.html').is_file()
+    assert (tmp_path/'app/assets/app.wasm').read_bytes()==b'\0asm'
+
+
+@pytest.mark.parametrize('entry',['../escape/','release/../escape/','release//assets/','/absolute/','release/./assets/','release\\assets/'])
+def test_zip_unsafe_directories_remain_rejected(tmp_path,entry):
+    archive=tmp_path/'bad.zip'
+    with zipfile.ZipFile(archive,'w') as z:
+        z.writestr(entry,'')
+        z.writestr('index.html','hello')
+        z.writestr('app.js','hello')
+        z.writestr('app.wasm',b'\0asm')
+    with pytest.raises(InstallError):
+        unpack_archive(archive,tmp_path/'app','photocraft','v0.9.0',100000)
+
+
+@pytest.mark.parametrize('previous_count',[0,1])
+def test_retention_counts_previous_versions_separately_after_rollback(factory,monkeypatch,previous_count):
+    app=factory();u=app.state.updater;db=app.state.db
+    db.run("INSERT INTO apps(slug,name,description) VALUES('photocraft','PhotoCraft','Photo')")
+    monkeypatch.setattr(u,'download',lambda url,size,digest,dest:dest.write_bytes(zip_data()))
+    for index,version in enumerate(('v0.9.0','v0.10.0','v0.11.0')):
+        u.install('photocraft',{'version':version,'asset':{'browser_download_url':'unused','size':1,'digest':'unused'}})
+        db.run('UPDATE versions SET installed_at=? WHERE slug=? AND version=?',(index,'photocraft',version))
+    u.rollback('photocraft','v0.9.0')
+    db.run("UPDATE settings SET value=? WHERE key='keep_previous_versions'",(str(previous_count),))
+    u.prune('photocraft')
+    retained={row['version'] for row in db.all("SELECT version FROM versions WHERE slug='photocraft'")}
+    assert retained==({'v0.9.0','v0.11.0'} if previous_count else {'v0.9.0'})
+    base=app.state.cfg.data_dir/'apps/photocraft/versions'
+    assert {path.name for path in base.iterdir()}==retained
+
+
 def test_install_rollback_retention(factory,monkeypatch):
     app=factory();u=app.state.updater;db=app.state.db
     def fake_download(url,size,digest,dest): dest.write_bytes(zip_data(version=current[0]))
@@ -87,3 +129,105 @@ def test_install_failure_does_not_switch_active(factory,monkeypatch):
     with pytest.raises(zipfile.BadZipFile):u.install('photocraft',{'version':'v0.10.0','asset':{'browser_download_url':'unused','size':1,'digest':'unused'}})
     assert db.one("SELECT active_version FROM apps WHERE slug='photocraft'")['active_version']=='v0.9.0'
     assert (app.state.cfg.data_dir/'apps'/'photocraft'/'versions'/'v0.9.0'/'index.html').exists()
+
+
+@pytest.mark.parametrize('entries',[
+    [('assets','file'),('assets/app.js','js')],
+    [('assets/app.js','js'),('assets','file')],
+    [('assets/',''),('assets','file')],
+    [('assets','file'),('assets/','')],
+])
+def test_zip_file_directory_collisions_rejected(tmp_path,entries):
+    archive=tmp_path/'collision.zip'
+    with zipfile.ZipFile(archive,'w') as z:
+        for name,data in entries: z.writestr(name,data)
+        z.writestr('index.html','hi');z.writestr('app.js','hi');z.writestr('app.wasm',b'\0asm')
+    with pytest.raises(InstallError,match='conflicting'):
+        unpack_archive(archive,tmp_path/'out','photocraft','v0.9.0',100000)
+
+
+def test_redirect_restricts_hosts_and_strips_authorization():
+    from portal.updater import SafeRedirect
+    from urllib.request import Request
+    redirect=SafeRedirect()
+    req=Request('https://api.github.com/repos/storytold/photocraft',headers={'Authorization':'Bearer test'})
+    for url in ('http://github.com/file','https://evil.example/file','https://github.com:8443/file','https://user@github.com/file'):
+        with pytest.raises(InstallError): redirect.redirect_request(req,None,302,'found',{},url)
+    result=redirect.redirect_request(req,None,302,'found',{},'https://release-assets.githubusercontent.com/file')
+    assert not result.has_header('Authorization')
+    assert req.has_header('Authorization')
+
+
+def test_interrupted_download_and_restart_preserve_installed_version(factory,monkeypatch):
+    app=factory();u=app.state.updater;db=app.state.db
+    db.run("INSERT INTO apps(slug,name,description) VALUES('photocraft','PhotoCraft','Photo')")
+    monkeypatch.setattr(u,'download',lambda url,size,digest,dest:dest.write_bytes(zip_data()))
+    release=lambda version:{'version':version,'asset':{'browser_download_url':'unused','size':1,'digest':'unused'}}
+    u.install('photocraft',release('v0.9.0'))
+    def interrupted(url,size,digest,dest):
+        dest.write_bytes(b'partial')
+        raise OSError('connection interrupted')
+    monkeypatch.setattr(u,'download',interrupted)
+    with pytest.raises(OSError):u.install('photocraft',release('v0.10.0'))
+    assert list((app.state.cfg.data_dir/'staging').iterdir())==[]
+    restarted=Updater(app.state.cfg,db)
+    monkeypatch.setattr(restarted,'download',lambda *args:pytest.fail('installed version should work offline'))
+    restarted.install('photocraft',release('v0.9.0'))
+    assert db.one("SELECT active_version FROM apps WHERE slug='photocraft'")['active_version']=='v0.9.0'
+    assert not (app.state.cfg.data_dir/'apps/photocraft/versions/v0.10.0').exists()
+
+
+def test_trigger_is_single_flight_and_stop_waits(factory,monkeypatch):
+    import threading
+    u=factory().state.updater
+    entered=threading.Event();release=threading.Event()
+    def check(): entered.set();release.wait(3)
+    monkeypatch.setattr(u,'check',check)
+    assert u.trigger()
+    assert entered.wait(2)
+    assert not u.trigger()
+    stopped=threading.Event()
+    worker=threading.Thread(target=lambda:(u.stop(),stopped.set()))
+    worker.start()
+    assert not stopped.wait(.05)
+    release.set();worker.join(2)
+    assert stopped.is_set()
+    assert not u.trigger()
+
+
+def test_rollback_waits_for_install_serialization(factory):
+    import threading
+    u=factory().state.updater
+    completed=threading.Event()
+    def rollback():
+        with pytest.raises(InstallError):u.rollback('photocraft','v0.9.0')
+        completed.set()
+    with u.lock:
+        worker=threading.Thread(target=rollback);worker.start()
+        assert not completed.wait(.05)
+    worker.join(2)
+    assert completed.is_set()
+
+
+def test_live_verification_script_with_synthetic_official_release(monkeypatch,tmp_path):
+    import importlib.util
+    import json
+    import sys
+    script=Path(__file__).resolve().parents[1]/'scripts/verify_official_releases.py'
+    spec=importlib.util.spec_from_file_location('verify_official_releases',script)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    data=zip_data()
+    asset={'name':'photocraft-web-0.9.0.zip','browser_download_url':'https://github.com/storytold/photocraft/releases/download/v0.9.0/photocraft-web-0.9.0.zip','digest':'sha256:'+hashlib.sha256(data).hexdigest(),'size':len(data)}
+    def request(self,url,**kwargs):
+        if url.endswith('/releases/latest'):return json.dumps({'tag_name':'v0.9.0','assets':[asset]}).encode()
+        if url.endswith('/photocraft'):return b'<a href="https://github.com/storytold/photocraft">source</a>'
+        return b'<a href="/apps/photocraft">PhotoCraft</a>'
+    monkeypatch.setattr(Updater,'request',request)
+    monkeypatch.setattr(Updater,'download',lambda self,url,size,digest,dest:dest.write_bytes(data))
+    report=tmp_path/'report.json'
+    monkeypatch.setattr(sys,'argv',[str(script),'--run-live','--report',str(report)])
+    assert module.main()==0
+    result=json.loads(report.read_text())
+    assert result['apps'][0]['ok'] is True
+    assert result['apps'][0]['digest']==asset['digest']
+    assert len(result['apps'][0]['headers'])==3

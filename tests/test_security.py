@@ -80,7 +80,160 @@ def test_single_user_apps_on_separate_origin(factory,tmp_path):
         ticket=launch.split('ticket=')[1].split('&')[0]
         with TestClient(app,base_url='https://apps.example.test') as webapp:
             assert webapp.get('/a/photocraft/v/v0.9.0/').status_code==401
-            assert webapp.post('/_redeem',headers={'X-Craft-Client':'app-bridge-v1'},json={'ticket':ticket,'slug':'photocraft'}).status_code==200
+            redeemed = webapp.post('/_redeem',headers={'X-Craft-Client':'app-bridge-v1'},json={'ticket':ticket,'slug':'photocraft'})
+            assert redeemed.status_code == 200
+            assert redeemed.headers['set-cookie'].startswith('__Host-craft_app_session_photocraft=')
+            assert 'Secure' in redeemed.headers['set-cookie']
+            assert 'Path=/' in redeemed.headers['set-cookie']
+            assert 'domain=' not in redeemed.headers['set-cookie'].lower()
             assert webapp.get('/_app_info?slug=photocraft').json()['version']=='v0.9.0'
-            assert webapp.get('/a/photocraft/v/v0.9.0/').status_code==200
+            asset = webapp.get('/a/photocraft/v/v0.9.0/')
+            assert asset.status_code == 200
+            assert asset.headers['cache-control'] == 'no-store'
             assert webapp.post('/_redeem',headers={'X-Craft-Client':'app-bridge-v1'},json={'ticket':ticket,'slug':'photocraft'}).status_code==403
+            db.run("UPDATE sessions SET expires_at=0 WHERE kind='portal'")
+            assert webapp.get('/_app_info?slug=photocraft').status_code == 401
+            assert webapp.get('/a/photocraft/v/v0.9.0/').status_code == 401
+
+
+def test_app_sessions_require_live_matching_portal_parent(factory):
+    from portal.auth import digest
+    app = factory()
+    auth, db = app.state.auth, app.state.db
+    try:
+        user = auth.create_user('alice', 'a strong password 123')
+        other = auth.create_user('bobby', 'another strong password')
+        parent = auth.new_session(user, 'portal')
+        token = auth.new_session(user, 'app', 'photocraft', digest(parent))
+        assert auth.get_session(token, 'app', 'photocraft')
+        db.run('UPDATE sessions SET expires_at=0 WHERE token_hash=?', (digest(parent),))
+        assert auth.get_session(token, 'app', 'photocraft') is None
+        db.run('UPDATE sessions SET expires_at=9999999999 WHERE token_hash=?', (digest(parent),))
+        assert auth.get_session(token, 'app', 'photocraft')
+        db.run('UPDATE sessions SET user_id=? WHERE token_hash=?', (other, digest(parent)))
+        assert auth.get_session(token, 'app', 'photocraft') is None
+        db.run('DELETE FROM sessions WHERE token_hash=?', (digest(parent),))
+        assert auth.get_session(token, 'app', 'photocraft') is None
+    finally:
+        db.close()
+
+
+def test_logout_revokes_app_sessions_and_pending_tickets(factory):
+    from portal.auth import digest
+    app = factory()
+    auth, db = app.state.auth, app.state.db
+    try:
+        user = auth.create_user('alice', 'a strong password 123')
+        parent = auth.new_session(user, 'portal')
+        session = auth.get_session(parent, 'portal')
+        ticket = auth.new_ticket(session, 'photocraft')
+        token = auth.redeem_ticket(ticket, 'photocraft')
+        pending = auth.new_ticket(session, 'photocraft')
+        assert auth.get_session(token, 'app', 'photocraft')
+        auth.revoke(digest(parent))
+        assert auth.get_session(token, 'app', 'photocraft') is None
+        assert auth.redeem_ticket(pending, 'photocraft') is None
+    finally:
+        db.close()
+
+
+def test_sensitive_responses_are_not_cached_and_login_fields_are_bounded(factory):
+    app = factory()
+    with TestClient(app, base_url='http://localhost:8080') as c:
+        for path in ('/api/bootstrap', '/api/admin/status', '/a/photocraft/v/v1/', '/v/v1/'):
+            assert c.get(path).headers['cache-control'] == 'no-store'
+        assert setup(c, app).headers['cache-control'] == 'no-store'
+        for payload in ({'username': 'x' * 49, 'password': 'normal'},
+                        {'username': 'admin', 'password': 'x' * 1025}):
+            response = c.post('/api/login', headers=headers(), json=payload)
+            assert response.status_code == 422
+            assert response.headers['cache-control'] == 'no-store'
+
+
+def test_setup_attempts_are_rate_limited(factory):
+    app = factory()
+    with TestClient(app, base_url='http://localhost:8080') as c:
+        payload = {'username': 'admin', 'password': 'strong password 123!', 'code': 'wrong'}
+        for _ in range(8):
+            assert c.post('/api/setup', headers=headers(), json=payload).status_code == 400
+        assert c.post('/api/setup', headers=headers(), json=payload).status_code == 429
+
+
+def test_streamed_body_limit_does_not_depend_on_content_length():
+    import asyncio
+    from portal.server import RequestBodyLimit
+
+    async def run():
+        called, sent = [], []
+        async def downstream(scope, receive, send):
+            called.append(True)
+        chunks = iter([
+            {'type': 'http.request', 'body': b'x' * 40000, 'more_body': True},
+            {'type': 'http.request', 'body': b'x' * 40000, 'more_body': False},
+        ])
+        async def receive():
+            return next(chunks)
+        async def send(message):
+            sent.append(message)
+        await RequestBodyLimit(downstream)({'type': 'http', 'method': 'POST'}, receive, send)
+        assert not called
+        assert sent[0]['status'] == 413
+    asyncio.run(run())
+
+
+def test_blocking_login_does_not_block_health_requests(factory, monkeypatch):
+    import asyncio
+    import threading
+    import httpx
+
+    app = factory()
+    app.state.auth.create_user('admin', 'strong password 123!', 'admin')
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_signin(username, password):
+        entered.set()
+        assert release.wait(3), 'test did not release password verification'
+        return None
+
+    monkeypatch.setattr(app.state.auth, 'signin', slow_signin)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://localhost:8080') as client:
+            pending = asyncio.create_task(client.post('/api/login', headers=headers(),
+                json={'username': 'admin', 'password': 'strong password 123!'}))
+            try:
+                assert await asyncio.to_thread(entered.wait, 2)
+                response = await asyncio.wait_for(client.get('/healthz'), timeout=1)
+                assert response.status_code == 200
+                assert not pending.done()
+            finally:
+                release.set()
+                assert (await pending).status_code == 401
+
+    try:
+        asyncio.run(run())
+    finally:
+        app.state.db.close()
+
+
+def test_https_auth_uses_host_prefixed_cookies_only(factory):
+    from portal.auth import PORTAL_COOKIE
+    app = factory(multi_user=True)
+    with TestClient(app, base_url='https://craft.example.test') as c:
+        response = setup(c, app)
+        cookie = response.headers['set-cookie']
+        assert cookie.startswith(f'__Host-{PORTAL_COOKIE}=')
+        assert 'Secure' in cookie and 'HttpOnly' in cookie and 'Path=/' in cookie
+        assert 'domain=' not in cookie.lower()
+        token = c.cookies.get(f'__Host-{PORTAL_COOKIE}')
+        csrf = c.get('/api/bootstrap').json()['csrf']
+        # A valid token injected under the old, Domain-capable name is ignored.
+        c.cookies.clear()
+        c.cookies.set(PORTAL_COOKIE, token, domain='craft.example.test')
+        assert c.get('/api/bootstrap').json()['user'] is None
+        c.cookies.set(f'__Host-{PORTAL_COOKIE}', token, domain='craft.example.test')
+        response = c.post('/api/logout', headers=headers(csrf))
+        assert response.status_code == 200
+        assert response.headers['set-cookie'].startswith(f'__Host-{PORTAL_COOKIE}=')
+        assert 'Secure' in response.headers['set-cookie']
+        assert 'domain=' not in response.headers['set-cookie'].lower()

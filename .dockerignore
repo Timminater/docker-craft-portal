@@ -11,3 +11,10 @@ tests
 docs
 *.pyc
 *.zip
+.playwright
+playwright-report
+test-results
+node_modules
+.env.*
+*.pem
+*.key

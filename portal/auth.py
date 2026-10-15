@@ -89,7 +89,11 @@ class Auth:
             return None
         return self.db.one("""SELECT s.*,u.username,u.role,u.public_id,u.enabled
             FROM sessions s JOIN users u ON u.id=s.user_id
-            WHERE s.token_hash=? AND s.kind=? AND s.scope=? AND s.expires_at>? AND u.enabled=1""", (digest(token),kind,scope,time.time()))
+            WHERE s.token_hash=? AND s.kind=? AND s.scope=? AND s.expires_at>? AND u.enabled=1
+            AND (s.kind='portal' OR EXISTS (
+                SELECT 1 FROM sessions parent WHERE parent.token_hash=s.parent_hash
+                AND parent.kind='portal' AND parent.user_id=s.user_id AND parent.expires_at>?
+            ))""", (digest(token),kind,scope,time.time(),time.time()))
 
     def csrf(self, session: dict) -> str:
         return hmac.new(self.csrf_secret, session["token_hash"].encode("ascii"), hashlib.sha256).hexdigest()
@@ -108,7 +112,8 @@ class Auth:
         with self.db.tx() as con:
             row = con.execute("""SELECT t.*,u.enabled FROM launch_tickets t JOIN users u ON u.id=t.user_id
                 JOIN sessions s ON s.token_hash=t.parent_hash
-                WHERE t.ticket_hash=? AND t.slug=? AND t.expires_at>? AND s.expires_at>?""", (digest(ticket),slug,time.time(),time.time())).fetchone()
+                WHERE t.ticket_hash=? AND t.slug=? AND t.expires_at>? AND s.expires_at>?
+                AND s.kind='portal' AND s.user_id=t.user_id""", (digest(ticket),slug,time.time(),time.time())).fetchone()
             if row is None:
                 return None
             con.execute("DELETE FROM launch_tickets WHERE ticket_hash=?", (digest(ticket),))

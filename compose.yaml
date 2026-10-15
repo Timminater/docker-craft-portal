@@ -1,18 +1,29 @@
 services:
   craft-portal:
-    build: .  # replace with a published image when available
-    container_name: craft-portal
+    build: .
+    image: craft-portal:local
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
-      TZ: Europe/Amsterdam
-      CRAFT_PUBLIC_URL: http://localhost:8080  # change to your external HTTPS URL behind reverse proxy
-      # CRAFT_APPS_DOMAIN: apps.example.nl  # optional: multi-user requires wildcard DNS and HTTPS
-      # GITHUB_TOKEN: ""                 # optional; use a secret instead of committing a token
+      CRAFT_PUBLIC_URL: ${CRAFT_PUBLIC_URL:-http://localhost:8080}
+      CRAFT_SINGLE_APP_URL: ${CRAFT_SINGLE_APP_URL:-}
+      CRAFT_APPS_DOMAIN: ${CRAFT_APPS_DOMAIN:-}
+      CRAFT_AUTO_START_UPDATES: ${CRAFT_AUTO_START_UPDATES:-true}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     volumes:
-      - ./data:/data
-    # For Unraid: use an appdata folder writable by UID 10001, or override user: "99:100".
+      - craft-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777,noexec,nosuid
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
     restart: unless-stopped
-    stop_grace_period: 30s
-    security_opt:
-      - no-new-privileges:true
+    stop_grace_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  craft-data:

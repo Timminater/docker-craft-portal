@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from functools import wraps
 import html.parser
 import json
 import logging
@@ -45,6 +46,14 @@ class InstallError(Exception):
     pass
 
 
+def serialized(method):
+    @wraps(method)
+    def run(self, *args, **kwargs):
+        with self.lock:
+            return method(self, *args, **kwargs)
+    return run
+
+
 class SafeRedirect(HTTPRedirectHandler):
     # Exact allowlist; never follow an arbitrary repo-provided URL or SSRF target.
     allowed_hosts = {
@@ -54,10 +63,11 @@ class SafeRedirect(HTTPRedirectHandler):
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         p = urlparse(newurl)
-        if p.scheme != "https" or p.hostname not in self.allowed_hosts or p.port not in (None,443):
+        if p.scheme != "https" or p.hostname not in self.allowed_hosts or p.port not in (None,443) or p.username or p.password:
             raise InstallError("Download redirected outside trusted GitHub hosts")
         redirect = super().redirect_request(req,fp,code,msg,headers,newurl)
-        if redirect is not None and urlparse(req.full_url).hostname != p.hostname:
+        # A GitHub API token must never reach a release CDN or website.
+        if redirect is not None and p.hostname != "api.github.com":
             redirect.remove_header("Authorization")
         return redirect
 
@@ -130,21 +140,31 @@ def validate_archive(z: zipfile.ZipFile, app: str, version: str, limit: int) -> 
     items = z.infolist()
     if not items or len(items) > 4000:
         raise InstallError("ZIP contains no files or too many entries")
-    names = set(); total=0; files=[]
+    names = set(); directories = set(); total=0; files=[]
     for info in items:
         name = info.filename
-        path = PurePosixPath(name)
-        if ("\\" in name or name.startswith("/") or ":" in name or any(x in {"", ".", ".."} for x in name.split("/"))
+        # ZIP directories have one trailing slash; validate the remaining path
+        # without relaxing checks for empty components or traversal.
+        entry_path = name[:-1] if info.is_dir() else name
+        path = PurePosixPath(entry_path)
+        if ("\\" in name or name.startswith("/") or ":" in name or any(x in {"", ".", ".."} for x in entry_path.split("/"))
                 or any(part in {"..", "."} for part in path.parts)):
             raise InstallError(f"Unsafe ZIP entry: {name[:80]}")
         mode = info.external_attr >> 16
         file_type = stat.S_IFMT(mode)
         if file_type not in (0, stat.S_IFDIR, stat.S_IFREG):
             raise InstallError("ZIP contains a link or special file")
-        if info.is_dir():
-            continue
         if info.flag_bits & 0x1:
             raise InstallError("Encrypted ZIP entries are not supported")
+        parents={str(parent) for parent in path.parents if str(parent) != "."}
+        if entry_path in names or parents & names or (not info.is_dir() and entry_path in directories):
+            raise InstallError("ZIP contains conflicting file and directory entries")
+        directories.update(parents)
+        if info.is_dir():
+            directories.add(entry_path)
+            continue
+        if file_type == stat.S_IFDIR:
+            raise InstallError("ZIP directory entry missing trailing slash")
         if name in names:
             raise InstallError("Duplicate ZIP filename")
         names.add(name)
@@ -180,7 +200,10 @@ def unpack_archive(archive: Path, dest: Path, slug: str, version: str, max_bytes
 class Updater:
     def __init__(self, cfg: Config, db: Database):
         self.cfg,self.db = cfg,db
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
+        self.schedule_lock = threading.Lock()
+        self.manual_thread = None
+        self.scheduled = False
         self.running = False
         self.last_check = None
         self.next_check = None
@@ -194,7 +217,7 @@ class Updater:
     def request(self,url: str,*,limit=3_000_000) -> bytes:
         p = urlparse(url)
         allowed = {"api.github.com", "getartcraft.com", "www.getartcraft.com"}
-        if p.scheme != "https" or p.hostname not in allowed:
+        if p.scheme != "https" or p.hostname not in allowed or p.port not in (None,443) or p.username or p.password:
             raise InstallError("Disallowed metadata URL")
         headers = {"User-Agent":"docker-craft-portal/0.1 (+https://github.com/Timminater/docker-craft-portal)","Accept":"application/vnd.github+json" if p.hostname=="api.github.com" else "text/html"}
         if p.hostname=="api.github.com" and self.cfg.github_token:
@@ -209,12 +232,14 @@ class Updater:
 
     def download(self,url: str, expected_size: int, expected_digest: str, destination: Path):
         p = urlparse(url)
-        if p.scheme!="https" or p.hostname!="github.com" or not p.path.startswith(f"/{self.cfg.trusted_owner}/"):
+        if p.scheme!="https" or p.hostname!="github.com" or p.port not in (None,443) or p.username or p.password or not p.path.startswith(f"/{self.cfg.trusted_owner}/"):
             raise InstallError("Untrusted asset URL")
         headers = {"User-Agent":"docker-craft-portal/0.1"}
         total=0; h=hashlib.sha256()
         with self.opener.open(Request(url,headers=headers),timeout=90) as response, destination.open("xb") as f:
             while True:
+                if self.stop_event.is_set():
+                    raise InstallError("Updater is shutting down")
                 data=response.read(1024*1024)
                 if not data: break
                 total+=len(data)
@@ -248,7 +273,9 @@ class Updater:
         self.install(slug, parsed)
         return "updated"
 
+    @serialized
     def install(self,slug: str, release: dict):
+        if self.stop_event.is_set(): raise InstallError("Updater is shutting down")
         if not SLUG.fullmatch(slug): raise InstallError("Invalid app slug")
         version=release["version"]
         if not TAG.fullmatch(version): raise InstallError("Invalid version")
@@ -266,6 +293,8 @@ class Updater:
                 asset=release["asset"]
                 self.download(asset["browser_download_url"],asset["size"],asset["digest"],zip_path)
                 unpack_archive(zip_path,tmp/"unpacked",slug,version,self.cfg.max_extracted_bytes)
+                if self.stop_event.is_set():
+                    raise InstallError("Updater is shutting down")
                 os.replace(tmp/"unpacked",dest)
         with self.db.tx() as con:
             con.execute("INSERT OR IGNORE INTO versions(slug,version,rel_path,installed_at) VALUES(?,?,?,?)", (slug,version,f"apps/{slug}/versions/{version}",time.time()))
@@ -273,11 +302,13 @@ class Updater:
         self.prune(slug)
         self.db.log("success","installed",version,slug)
 
+    @serialized
     def prune(self,slug: str):
-        keep=max(0,min(10,int(self.db.setting("keep_previous_versions"))))+1
+        keep=max(0,min(10,int(self.db.setting("keep_previous_versions"))))
         app=self.db.one("SELECT active_version FROM apps WHERE slug=?",(slug,))
         versions=self.db.all("SELECT version,rel_path FROM versions WHERE slug=? ORDER BY installed_at DESC",(slug,))
-        retained={v["version"] for v in versions[:keep]}
+        previous=[v for v in versions if v["version"] != app["active_version"]]
+        retained={v["version"] for v in previous[:keep]}
         retained.add(app["active_version"])
         for v in versions:
             if v["version"] in retained: continue
@@ -288,6 +319,7 @@ class Updater:
             shutil.rmtree(target,ignore_errors=False)
             self.db.run("DELETE FROM versions WHERE slug=? AND version=?",(slug,v["version"]))
 
+    @serialized
     def rollback(self,slug: str,version: str):
         if not SLUG.fullmatch(slug) or not TAG.fullmatch(version):
             raise InstallError("Invalid app/version")
@@ -299,6 +331,7 @@ class Updater:
         self.db.log("warning","rollback",version+" (automatic updates paused)",slug)
 
     def check(self):
+        if self.stop_event.is_set(): return False
         if not self.lock.acquire(blocking=False):
             return False
         self.running=True
@@ -355,13 +388,24 @@ class Updater:
         self.thread.start()
 
     def trigger(self):
-        if self.running: return False
-        threading.Thread(target=self.check,name="craft-manual-update",daemon=True).start()
-        return True
+        with self.schedule_lock:
+            if self.running or self.scheduled or self.stop_event.is_set(): return False
+            self.scheduled = True
+            def run():
+                try:
+                    self.check()
+                finally:
+                    with self.schedule_lock:
+                        self.scheduled = False
+            self.manual_thread = threading.Thread(target=run,name="craft-manual-update",daemon=True)
+            self.manual_thread.start()
+            return True
 
     def stop(self):
         self.stop_event.set()
-        if self.thread: self.thread.join(timeout=2)
+        # Wait before the server closes SQLite; in-flight requests use timeouts.
+        for worker in (self.thread, self.manual_thread):
+            if worker and worker is not threading.current_thread(): worker.join()
 
 
 def hmac_compare(a: str,b: str) -> bool:

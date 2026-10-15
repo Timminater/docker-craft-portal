@@ -2,7 +2,7 @@
 
 Self-hosted, login-protected web portal for all *official* ArtCraft WebAssembly apps. **One Docker container**, no Linux desktop streaming, no per-app containers, no runtime Rust compilation. The release updater automatically discovers compatible new apps in the official [ArtCraft catalog](https://getartcraft.com/apps), downloads verified official release ZIPs, installs versions transactionally and retains the previous two releases.
 
-> **Implementation status: functional MVP (pre-production).** Local API/security/update unit tests pass. Actual GitHub release downloads, real 13-app Chromium/WebGPU smoke tests, production Docker build and security review remain to be verified in a network-enabled Codex/CI environment. Do not expose publicly until those checks and a TLS reverse proxy are in place.
+> **Implementation status: hardened pre-production build.** Local authentication, updater, backup, Chromium browser and hardened AMD64 container checks have been exercised. Genuine upstream ArtCraft release/browser compatibility, Firefox and ARM64 execution remain release gates. See [acceptance evidence](docs/ACCEPTANCE.md), [limitations](docs/KNOWN_LIMITATIONS.md), and [deployment operations](docs/deployment/README.md).
 
 ## Features already implemented
 
@@ -95,12 +95,32 @@ docker build -t craft-portal:test .
 
 Tests use synthetic ZIPs and a local in-memory HTTP client; they do **not** prove every real ArtCraft web build loads. For production approval also execute the checklist in `docs/KNOWN_LIMITATIONS.md` and browser smoke tests against actual official web release ZIPs.
 
-## Codex Cloud hand-off
+## Development and acceptance
 
-- Push these files to a **new** repository `Timminater/docker-craft-portal`; this archive is not yet on GitHub.
-- Connect the repository to [Codex Cloud](https://chatgpt.com/codex) and publish a cloud environment with setup command `bash .codex/setup.sh`.
-- Select `GPT-6.1 Sol` at **Low** reasoning effort in the Codex Cloud model selector if available. `.codex/config.toml` provides a suggested default for compatible Codex installations, but the UI choice determines your actual Cloud task model.
-- Copy `CODEX_TASK.md` into the first Codex Cloud task. Consult `AGENTS.md` for tests, security invariants and subagent responsibilities.
+`bash .codex/setup.sh` creates an isolated `.venv` and runs non-browser checks.
+`bash .codex/start.sh` starts the local development portal with updates paused.
+Set `CRAFT_VENV_DIR` to reuse an external environment. For a nondefault port set
+both `CRAFT_PORT` and the matching `CRAFT_PUBLIC_URL`.
+
+Use Python 3.12. Keep a virtual environment outside source control. Install
+`requirements-dev.txt` for API/updater/backup tests. For browser acceptance,
+install `requirements-browser.txt` and follow [browser testing](docs/browser-testing.md).
+CI runs unit tests, JavaScript checks, Chromium/Firefox and multi-architecture
+container builds. Version tags trigger the same checks before GHCR publishing;
+adding workflow configuration does not itself publish an image.
+
+An explicit live check downloads every discovered official release into isolated
+temporary storage, verifies publisher and SHA-256, and checks authenticated HTTP
+assets (potentially several GB):
+
+```sh
+python scripts/verify_official_releases.py --run-live --report /tmp/craft-releases.json
+```
+
+That HTTP check does not prove browser rendering, WebGPU or service-worker
+compatibility. Never relax digest or TLS validation to pass an upstream failure.
+Production deployment, separate origin/TLS, Unraid permissions, tagged images and
+checksum-verified backup/restore are documented in [deployment operations](docs/deployment/README.md).
 
 ## Licensing
 

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-python -m pip install -r requirements-dev.txt
-mkdir -p /tmp/craft-portal-codex
-printf 'CRAFT_DATA_DIR=/tmp/craft-portal-codex\nCRAFT_PUBLIC_URL=http://localhost:8080\nCRAFT_AUTO_START_UPDATES=false\n' > .env.codex
-python -m pytest -q
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+craft_venv_dir="${CRAFT_VENV_DIR:-$PWD/.venv}"
+python3 -m venv "$craft_venv_dir"
+"$craft_venv_dir/bin/python" -m pip install -r requirements-dev.txt
+"$craft_venv_dir/bin/python" -m compileall -q portal scripts
+"$craft_venv_dir/bin/python" -m pytest -q
+node --check portal/static/app.js
+node --check portal/static/bridge.js

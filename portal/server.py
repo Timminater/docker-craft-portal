@@ -32,6 +32,33 @@ mimetypes.add_type("application/manifest+json",".webmanifest")
 STATIC = Path(__file__).parent / "static"
 
 
+class RequestBodyLimit:
+    """Bound actual request bytes even when Content-Length is absent or false."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] not in {"POST", "PUT", "PATCH", "DELETE"}:
+            return await self.app(scope, receive, send)
+        messages, size = [], 0
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            size += len(message.get("body", b""))
+            if size > 65536:
+                response = JSONResponse(status_code=413, content={"detail": "Request body too large"},
+                                        headers={"Cache-Control": "no-store"})
+                return await response(scope, receive, send)
+            messages.append(message)
+            if not message.get("more_body", False):
+                break
+        pending = iter(messages)
+        async def replay():
+            return next(pending, None) or await receive()
+        return await self.app(scope, replay, send)
+
+
 class Credentials(BaseModel):
     username: str = Field(min_length=3,max_length=48)
     password: str = Field(min_length=12,max_length=1024)
@@ -67,8 +94,8 @@ class TicketInput(BaseModel):
 
 
 class LoginInput(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=48)
+    password: str = Field(min_length=1, max_length=1024)
 
 
 def same_origin(request: Request, cfg: Config):
@@ -105,6 +132,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         db.close()
 
     app=FastAPI(title="Docker Craft Portal",docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
+    app.add_middleware(RequestBodyLimit)
     # Bound authentication attempts per remote peer and username without trusting spoofable X-Forwarded-For.
     login_attempts = defaultdict(deque)
     login_lock = threading.Lock()
@@ -153,6 +181,9 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
             except ValueError:
                 return JSONResponse(status_code=400,content={"detail":"Invalid Content-Length"})
         response=await call_next(request)
+        # Never let browser/proxy caches bypass a later authorization check.
+        if request.url.path.startswith(("/api/", "/a/", "/v/")) or request.url.path in {"/_redeem", "/_app_info"}:
+            response.headers["Cache-Control"]="no-store"
         response.headers["X-Content-Type-Options"]="nosniff"
         response.headers["Referrer-Policy"]="no-referrer"
         response.headers["Permissions-Policy"]="camera=(), geolocation=()"
@@ -165,9 +196,17 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         if host_type(request)[0] != "portal":
             raise HTTPException(404)
 
+    def cookie_name(name: str) -> str:
+        # Browsers reject __Host- cookies with Domain or without Secure/path=/.
+        # An upstream app on a sibling origin therefore cannot shadow portal auth.
+        return f"__Host-{name}" if cfg.secure_cookie else name
+
+    def read_cookie(request: Request, name: str):
+        return request.cookies.get(cookie_name(name))
+
     def session(request: Request):
         portal_only(request)
-        s=auth.get_session(request.cookies.get(PORTAL_COOKIE),"portal")
+        s=auth.get_session(read_cookie(request, PORTAL_COOKIE),"portal")
         if not s: raise HTTPException(401,"Please log in")
         return s
 
@@ -183,7 +222,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
             raise HTTPException(403,"CSRF validation failed")
 
     def cookie(response: Response, name: str, token: str, ttl: int):
-        response.set_cookie(name,token,max_age=ttl,path="/",httponly=True,secure=cfg.secure_cookie,samesite="lax")
+        response.set_cookie(cookie_name(name),token,max_age=ttl,path="/",httponly=True,secure=cfg.secure_cookie,samesite="lax")
 
     @app.get("/healthz")
     async def health():
@@ -236,7 +275,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         if kind not in {"app", "single_app"} or not SLUG.fullmatch(slug): raise HTTPException(404)
         if kind == "app" and host_slug != slug: raise HTTPException(403)
         app_cookie_name = APP_COOKIE if kind=="app" else f"{APP_COOKIE}_{slug}"
-        sess = auth.get_session(request.cookies.get(app_cookie_name), "app", slug)
+        sess = auth.get_session(read_cookie(request, app_cookie_name), "app", slug)
         if not sess or (kind == "app" and sess["public_id"] != public_id): raise HTTPException(401)
         row = db.one("SELECT active_version,disabled FROM apps WHERE slug=?", (slug,))
         if not row or not row["active_version"] or row["disabled"]: raise HTTPException(404)
@@ -245,12 +284,13 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
     @app.get("/api/bootstrap")
     async def bootstrap(request: Request):
         portal_only(request)
-        s=auth.get_session(request.cookies.get(PORTAL_COOKIE),"portal")
+        s=auth.get_session(read_cookie(request, PORTAL_COOKIE),"portal")
         return {"setup_required":auth.setup_required(),"user":format_user(s) if s else None,"csrf":auth.csrf(s) if s else None,"multi_user":cfg.multi_user,"app_origin_configured":cfg.app_origin_configured}
 
     @app.post("/api/setup")
-    async def setup(request:Request,payload:FirstSetup):
+    def setup(request:Request,payload:FirstSetup):
         portal_only(request); same_origin(request,cfg)
+        check_login_limit(request, "__first_setup__")
         try: user_id=auth.setup(payload.code,payload.username,payload.password)
         except ValueError as exc: raise HTTPException(400,str(exc)) from exc
         token=auth.new_session(user_id,"portal")
@@ -261,7 +301,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
 
     # Login is protected by a first-party custom header to mitigate login CSRF.
     @app.post("/api/login")
-    async def login(request:Request,payload:LoginInput):
+    def login(request:Request,payload:LoginInput):
         portal_only(request); same_origin(request,cfg)
         if auth.setup_required(): raise HTTPException(409,"Complete administrator setup first")
         check_login_limit(request, payload.username)
@@ -280,7 +320,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         changing(request,s)
         auth.revoke(s["token_hash"])
         response=JSONResponse({"ok":True})
-        response.delete_cookie(PORTAL_COOKIE,path="/")
+        response.delete_cookie(cookie_name(PORTAL_COOKIE),path="/",secure=cfg.secure_cookie,httponly=True,samesite="lax")
         return response
 
     @app.get("/api/apps")
@@ -316,7 +356,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         return {"url":url}
 
     @app.get("/api/admin/status")
-    async def status(request:Request,s:dict=Depends(admin_session)):
+    def status(request:Request,s:dict=Depends(admin_session)):
         settings=db.settings()
         rows=db.all("SELECT slug,active_version,status,last_error,latest_version,disabled,auto_update FROM apps ORDER BY slug")
         count=db.one("SELECT COUNT(*) as count FROM users")["count"]
@@ -355,7 +395,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         return {"versions":db.all("SELECT version,installed_at FROM versions WHERE slug=? ORDER BY installed_at DESC",(slug,))}
 
     @app.post("/api/admin/apps/{slug}/rollback")
-    async def rollback(slug:str,request:Request,payload:RollbackInput,s:dict=Depends(admin_session)):
+    def rollback(slug:str,request:Request,payload:RollbackInput,s:dict=Depends(admin_session)):
         changing(request,s)
         try: updater.rollback(slug,payload.version)
         except Exception as exc: raise HTTPException(400,str(exc)) from exc
@@ -376,7 +416,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         return {"users":db.all("SELECT id,username,role,public_id,enabled,created_at FROM users ORDER BY username")}
 
     @app.post("/api/admin/users")
-    async def create_user(request:Request,payload:UserInput,s:dict=Depends(admin_session)):
+    def create_user(request:Request,payload:UserInput,s:dict=Depends(admin_session)):
         changing(request,s)
         if not cfg.multi_user:
             raise HTTPException(400,"Additional users require CRAFT_APPS_DOMAIN and wildcard TLS")
@@ -406,11 +446,11 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         kind,host_slug,public_id = host_type(request)
         if mode == "single":
             if cfg.multi_user or kind!="single_app": raise HTTPException(404)
-            s=auth.get_session(request.cookies.get(f"{APP_COOKIE}_{slug}"),"app",slug)
+            s=auth.get_session(read_cookie(request, f"{APP_COOKIE}_{slug}"),"app",slug)
             if not s: raise HTTPException(401,"Open this app from Craft Portal")
         else:
             if not cfg.multi_user or kind!="app" or host_slug!=slug: raise HTTPException(404)
-            s=auth.get_session(request.cookies.get(APP_COOKIE),"app",slug)
+            s=auth.get_session(read_cookie(request, APP_COOKIE),"app",slug)
             if not s or s["public_id"]!=public_id: raise HTTPException(401,"Open this app from Craft Portal")
         row=db.one("SELECT active_version,disabled FROM apps WHERE slug=?",(slug,))
         known=db.one("SELECT rel_path FROM versions WHERE slug=? AND version=?",(slug,version))
@@ -419,7 +459,7 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         base=(cfg.data_dir/"apps"/slug/"versions"/version).resolve()
         file=(base/(asset or "index.html")).resolve()
         if not file.is_relative_to(base) or not file.is_file(): raise HTTPException(404)
-        headers={"Cache-Control":"private, max-age=3600" if asset in ("", "index.html") else "private, max-age=31536000, immutable"}
+        headers={"Cache-Control":"no-store"}
         # Web GPU + selected media workflows require a secure origin (configured via reverse proxy).
         if slug in {"filmcraft","effectcraft","lightcraft"}:
             headers.update({"Cross-Origin-Opener-Policy":"same-origin", "Cross-Origin-Embedder-Policy":"require-corp", "Cross-Origin-Resource-Policy":"same-origin"})
