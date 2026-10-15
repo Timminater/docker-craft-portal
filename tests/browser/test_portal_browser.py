@@ -178,7 +178,9 @@ def test_browser_setup_wasm_csrf_rollback_restart_logout(browser, site):
         page.locator('#retry-admin').wait_for()
         assert page.locator('#interval').input_value() == '12'
         page.unroute('**/api/admin/status')
-        page.locator('#retry-admin').click()
+        # Polling may recover and remove this button between pointer stability
+        # checks. Activate it in one task if still present, then verify recovery.
+        page.evaluate("document.getElementById('retry-admin')?.click()")
         page.locator('#retry-admin').wait_for(state='detached')
         assert page.locator('#interval').input_value() == '12'
 
