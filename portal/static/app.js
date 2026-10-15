@@ -1,7 +1,7 @@
 'use strict';
 const {t, locale, errorMessage, updaterResult} = CraftI18n;
 const root = document.getElementById('app');
-const state = {setup:false,user:null,csrf:null,multiUser:false,appOriginConfigured:false,appOriginMode:'',apps:[],admin:null,page:'apps',search:'',favs:[],poll:null,adminError:'',polling:false};
+const state = {setup:false,user:null,csrf:null,multiUser:false,appOriginConfigured:false,appOriginMode:'',apps:[],admin:null,page:'apps',search:'',favs:[],appOrder:[],poll:null,adminError:'',polling:false};
 const e = x => String(x ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const colors = [['#9b65e8','#5a65ed'],['#2899e2','#2869bb'],['#f4a33d','#d45358'],['#32b89c','#217c8d'],['#e478a0','#a84d98'],['#7161d6','#bd69af'],['#17a08d','#2b72aa']];
 const icons = {apps:'▦',admin:'⚙',users:'♙',events:'◷'};
@@ -21,7 +21,7 @@ async function api(path, {method='GET', data=null,auth=true}={}) {
 }
 function userFavorites(){try{return JSON.parse(localStorage.getItem(`craft:favs:${state.user.public_id}`)||'[]');}catch{return [];}}
 function saveFaves(){localStorage.setItem(`craft:favs:${state.user.public_id}`,JSON.stringify(state.favs));}
-async function init(){try{let b=await api('/api/bootstrap',{auth:false});state.setup=b.setup_required;if(state.user?.public_id!==b.user?.public_id)resetWorkspace();state.user=b.user;state.csrf=b.csrf;state.multiUser=b.multi_user;state.appOriginConfigured=b.app_origin_configured;state.appOriginMode=b.app_origin_mode||'';if(state.user){state.favs=userFavorites();await loadApps();}render();}catch(ex){root.innerHTML=`<div class="boot">${e(t("Kan geen verbinding maken met Craft Portal. Controleer je server of vernieuw de pagina."))}</div>`;}}
+async function init(){try{let b=await api('/api/bootstrap',{auth:false});state.setup=b.setup_required;if(state.user?.public_id!==b.user?.public_id)resetWorkspace();state.user=b.user;state.csrf=b.csrf;state.multiUser=b.multi_user;state.appOriginConfigured=b.app_origin_configured;state.appOriginMode=b.app_origin_mode||'';state.appOrder=[];if(state.user){state.favs=userFavorites();state.appOrder=(await api('/api/preferences')).app_order;await loadApps();}render();}catch(ex){root.innerHTML=`<div class="boot">${e(t("Kan geen verbinding maken met Craft Portal. Controleer je server of vernieuw de pagina."))}</div>`;}}
 async function loadApps(){const a=await api('/api/apps');state.apps=a.apps;reconcileWorkspace();}
 async function loadAdmin(){state.admin=await api('/api/admin/status');}
 function brand(){return `<div class="brand"><div class="brand-mark">✦</div><strong>Craft Portal</strong></div>`;}
@@ -43,7 +43,8 @@ const appDescriptions = {photocraft:'Fotobewerking',paintcraft:'Fotobewerking',v
 // Workflow references verified against each official storytold app README.
 const appInspirations = {photocraft:'Adobe Photoshop',vectorcraft:'Adobe Illustrator',filmcraft:'Adobe Premiere Pro',lightcraft:'Adobe Lightroom',pdfcraft:'Adobe Acrobat',effectcraft:'Adobe After Effects',designcraft:'Adobe InDesign',figcraft:'Figma',wordcraft:'Microsoft Word',soundcraft:'Avid Pro Tools',deckcraft:'Microsoft PowerPoint',cadcraft:'Autodesk AutoCAD',gridcraft:'Microsoft Excel'};
 function inspiration(app){return appInspirations[app.slug] || '';}
-function filteredApps(){const query=state.search.trim().toLocaleLowerCase(locale);return state.apps.filter(app=>!app.disabled&&[app.name,app.slug,description(app),summary(app),category(app),inspiration(app)].join(' ').toLocaleLowerCase(locale).includes(query)).sort((a,b)=>Number(state.favs.includes(b.slug))-Number(state.favs.includes(a.slug))||a.name.localeCompare(b.name,locale));}
+function orderedApps(order=state.appOrder){const ranks=new Map(order.map((slug,index)=>[slug,index]));return state.apps.filter(app=>!app.disabled).sort((a,b)=>order.length?((ranks.get(a.slug)??Infinity)-(ranks.get(b.slug)??Infinity)||a.name.localeCompare(b.name,locale)):(Number(state.favs.includes(b.slug))-Number(state.favs.includes(a.slug))||a.name.localeCompare(b.name,locale)));}
+function filteredApps(){const query=state.search.trim().toLocaleLowerCase(locale);return orderedApps().filter(app=>[app.name,app.slug,description(app),summary(app),category(app),inspiration(app)].join(' ').toLocaleLowerCase(locale).includes(query));}
 function description(app){return t(appDescriptions[app.slug] || app.description || 'Creatieve applicatie');}
 function category(app){const categories={photocraft:'Photography',paintcraft:'Illustration',lightcraft:'Photography',vectorcraft:'Illustration',filmcraft:'Video',effectcraft:'Video',designcraft:'Design',figcraft:'Design',pdfcraft:'Documents',wordcraft:'Documents',soundcraft:'Audio',deckcraft:'Presentations',cadcraft:'CAD',gridcraft:'Spreadsheets'};return t(categories[app.slug]||'creativeTools');}
 function summary(app){const type=app.slug.replace(/craft$/,'');return t('summary.'+(['photo','vector','film','light','pdf','effect','design','fig','word','sound','deck','cad','grid'].includes(type)?type:'generic'));}
@@ -68,7 +69,7 @@ document.addEventListener('error',event=>{const image=event.target;if(image inst
 function card(app){const i=[...app.slug].reduce((hash,char)=>(hash*31+char.charCodeAt(0))>>>0,0);const ready=!!app.active_version&&!app.disabled;return `<article class="app-card tone-${i%colors.length}"><div class="card-art">${officialArt(app,'hero')}<button class="fav ${state.favs.includes(app.slug)?'isfav':''}" data-fav="${e(app.slug)}" title="${e(t('Favoriet'))}" aria-label="${e(t('favoriteApp',{name:app.name}))}" aria-pressed="${state.favs.includes(app.slug)}">${state.favs.includes(app.slug)?'★':'☆'}</button></div>
  <div class="card-content"><span class="card-category">${e(category(app))}</span><h3>${e(app.name)}</h3><p>${e(summary(app))}</p>${inspiration(app)?`<div class="app-inspiration">${e(t('inspiredBy',{name:inspiration(app)}))}</div>`:''}<div class="card-status">${ready?`<span class="pill ok">● v${e(app.active_version.replace(/^v/,''))}</span>`:`<span class="pill warn">${e(t(app.disabled?'Uitgeschakeld':'Installatie wordt voorbereid'))}</span>`}</div></div>
  <div class="card-footer"><span class="tiny muted">${app.latest_version?`Release ${e(app.latest_version)}`:e(t('Nog niet geïnstalleerd'))}</span><div class="card-actions"><button class="mini" data-download="${e(app.slug)}" aria-label="${e(t('Desktopversie downloaden'))}" title="${e(t('Desktopversie'))}">↓</button><button class="primary" data-open="${e(app.slug)}" ${ready&&state.appOriginConfigured?'':'disabled'}>${e(t('Openen'))}<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 12 12 4M5 4h7v7"/></svg></button></div></div></article>`;}
-function appsPage(){let list=filteredApps();const ready=state.apps.filter(x=>x.active_version&&!x.disabled).length;return `<section class="library-toolbar"><div class="library-intro"><p class="muted">${e(t('libraryIntro'))}</p><div class="library-summary"><span class="pill ok">● ${e(t('appsReady',{count:ready}))}</span><span class="small muted">${e(t('libraryCount',{count:state.apps.filter(x=>!x.disabled).length}))}</span></div></div><label class="searchbar">⌕ <input id="search" type="search" value="${e(state.search)}" placeholder="${e(t('Zoek applicaties'))}" aria-label="${e(t('Zoek applicaties'))}"></label></section>
+function appsPage(){let list=filteredApps();const ready=state.apps.filter(x=>x.active_version&&!x.disabled).length;return `<section class="library-toolbar"><div class="library-intro"><p class="muted">${e(t('libraryIntro'))}</p><div class="library-summary"><span class="pill ok">● ${e(t('appsReady',{count:ready}))}</span><span class="small muted">${e(t('libraryCount',{count:state.apps.filter(x=>!x.disabled).length}))}</span></div></div><div class="library-tools"><button class="secondary" id="arrange-apps">${e(t('order.title'))}</button><label class="searchbar">⌕ <input id="search" type="search" value="${e(state.search)}" placeholder="${e(t('Zoek applicaties'))}" aria-label="${e(t('Zoek applicaties'))}"></label></div></section>
  ${!state.appOriginConfigured?`<div class="alert">${e(t('Configureer een apart app-domein (CRAFT_SINGLE_APP_URL of CRAFT_APPS_DOMAIN) om WebAssembly-apps veilig gescheiden van het beheerdersportaal te openen.'))}</div>`:''}
   <div id="app-results">${list.length?`<div class="app-grid">${list.map(card).join('')}</div>`:`<div class="empty">${e(t(state.apps.length?'Geen applicaties gevonden.':'De eerste controle wordt uitgevoerd. Gecontroleerde apps verschijnen hier vanzelf.'))}</div>`}</div>`;}
 function adminPage(){if(!state.admin)return `<div class="boot">${e(t("Beheerinformatie laden…"))}</div>`;const a=state.admin;const s=a.settings;return `<div class="stats"><div class="stat"><span class="upper">${e(t("Geïnstalleerde apps"))}</span><strong>${a.apps.filter(x=>x.active_version).length}</strong></div><div class="stat"><span class="upper">${e(t("Actieve download"))}</span><strong>${a.running?t("Ja"):t("Nee")}</strong></div><div class="stat"><span class="upper">${e(t("Schijfruimte"))}</span><strong>${fmtBytes(a.bytes)}</strong></div><div class="stat"><span class="upper">Accounts</span><strong>${a.users}</strong></div></div>
@@ -104,7 +105,7 @@ function updateWorkspace(){
  const app=state.apps.find(app=>app.slug===activeApp),session=sessions.get(activeApp);
  const bar=workspace.querySelector('.workspace-toolbar');
  bar.innerHTML=app?`<div class="workspace-heading"><strong title="${e(app.name)}">${e(app.name)}</strong><span class="small muted workspace-status ${session?.status==='workspace.compatibility'?'workspace-status-helper':''}" role="status">${e(t(session?.status||'workspace.starting'))}</span></div><div class="workspace-actions">${[['home','library','M2 2h12v12H2zM2 6h12M2 10h12M6 2v12M10 2v12'],['separate','separate','M6 3H3v10h10v-3M9 3h4v4M7 9l6-6'],['retry','retry','M13 7a5 5 0 1 1-2-3M13 2v4H9'],['close','close','M4 4l8 8M12 4l-8 8']].map(([action,key,path])=>`<button class="${action==='close'?'danger':'secondary'}" data-workspace="${action}" aria-label="${e(t('workspace.'+key))}" title="${e(t('workspace.'+key))}"><svg class="workspace-action-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg><span class="workspace-action-label">${e(t('workspace.'+key))}</span></button>`).join('')}</div>`:'';
- workspace.querySelector('.workspace-dock').innerHTML=`<button class="dock-app dock-home ${!activeApp?'selected':''}" data-workspace="home" aria-label="${e(t('workspace.library'))}" title="${e(t('workspace.library'))}" aria-pressed="${!activeApp}"><span class="dock-icon" aria-hidden="true">▦</span><span>${e(t('workspace.library'))}</span></button>${state.apps.filter(app=>!app.disabled).map(app=>`<button class="dock-app ${activeApp===app.slug?'selected':''} ${sessions.has(app.slug)?'running':''}" data-open="${e(app.slug)}" ${app.active_version&&state.appOriginConfigured?'':'disabled'} aria-label="${e(app.name)}" aria-pressed="${activeApp===app.slug}" title="${e(app.name)}">${appMark(app)}<span>${e(app.name)}</span></button>`).join('')}`;
+ workspace.querySelector('.workspace-dock').innerHTML=`<div class="dock-items"><button class="dock-app dock-home ${!activeApp?'selected':''}" data-workspace="home" aria-label="${e(t('workspace.library'))}" title="${e(t('workspace.library'))}" aria-pressed="${!activeApp}"><span class="dock-icon" aria-hidden="true">▦</span><span>${e(t('workspace.library'))}</span></button>${orderedApps().map(app=>`<button class="dock-app ${activeApp===app.slug?'selected':''} ${sessions.has(app.slug)?'running':''}" data-open="${e(app.slug)}" ${app.active_version&&state.appOriginConfigured?'':'disabled'} aria-label="${e(app.name)}" aria-pressed="${activeApp===app.slug}" title="${e(app.name)}">${appMark(app)}<span>${e(app.name)}</span></button>`).join('')}</div>`;
  if(focused){const buttons=[...workspace.querySelectorAll('button')];(buttons.find(button=>focused.action?button.dataset.workspace===focused.action:button.dataset.open===focused.slug)||workspace.querySelector('.dock-app.selected'))?.focus();}
  else if(activeApp&&root.contains(document.activeElement))workspace.querySelector('.dock-app.selected')?.focus();
 }
@@ -167,6 +168,41 @@ function showModal(el){
   else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
  });
 }
+function arrangeApps(){
+ const owner=state.user.public_id;
+ let draft=orderedApps().map(app=>app.slug),useDefault=!state.appOrder.length,dragged=null,saving=false;
+ const el=document.createElement('div');el.className='modal-back';
+ el.innerHTML=`<div class="modal order-modal" role="dialog" aria-modal="true" aria-labelledby="order-title"><div class="row between"><h2 id="order-title">${e(t('order.title'))}</h2><button class="mini" id="close-modal" aria-label="${e(t('Sluiten'))}">×</button></div><p class="small muted mt-10">${e(t('order.help'))}</p><ol class="reorder-list"></ol><div class="order-footer"><button class="secondary" id="reset-order">${e(t('order.reset'))}</button><button class="primary" id="save-order">${e(t('order.save'))}</button></div><p class="small muted" role="status" id="order-feedback"></p></div>`;
+ const list=el.querySelector('.reorder-list'),feedback=el.querySelector('#order-feedback');
+ function draw(focusSlug,direction){
+  list.innerHTML=draft.map((slug,index)=>{const app=state.apps.find(app=>app.slug===slug)||{slug,name:slug};return `<li draggable="true" data-order-slug="${e(slug)}"><span class="order-grip" aria-hidden="true">⠿</span><span class="order-icon">${officialArt(app,'icon')}</span><span class="order-name">${e(app.name)}</span><button class="secondary" data-order-up="${e(slug)}" aria-label="${e(t('order.up',{name:app.name}))}" ${index===0?'disabled':''}>↑</button><button class="secondary" data-order-down="${e(slug)}" aria-label="${e(t('order.down',{name:app.name}))}" ${index===draft.length-1?'disabled':''}>↓</button></li>`;}).join('');
+  if(focusSlug){const row=[...list.children].find(row=>row.dataset.orderSlug===focusSlug);(row?.querySelector(`[data-order-${direction}]:not(:disabled)`)||row?.querySelector('button:not(:disabled)'))?.focus();}
+ }
+ function move(slug,index,direction='up'){
+  if(saving)return;const from=draft.indexOf(slug);if(from<0||index<0||index>=draft.length||from===index)return;
+  draft.splice(from,1);draft.splice(index,0,slug);useDefault=false;draw(slug,direction);
+  feedback.textContent=t('order.position',{name:state.apps.find(app=>app.slug===slug)?.name||slug,position:index+1,count:draft.length});
+ }
+ el.addEventListener('click',async event=>{
+  const button=event.target.closest('button');if(!button||saving)return;
+  const slug=button.dataset.orderUp||button.dataset.orderDown;
+  if(slug){const direction=button.dataset.orderUp?'up':'down';move(slug,draft.indexOf(slug)+(direction==='up'?-1:1),direction);}
+  else if(button.id==='reset-order'){useDefault=true;draft=orderedApps([]).map(app=>app.slug);draw();feedback.textContent=t('order.resetDraft');}
+  else if(button.id==='save-order'){
+   saving=true;el.querySelectorAll('button').forEach(button=>button.disabled=true);
+   try{const preferences=await api('/api/preferences',{method:'PUT',data:{app_order:useDefault?[]:draft}});if(state.user?.public_id!==owner)return;state.appOrder=preferences.app_order;closeModal();render();document.getElementById('arrange-apps')?.focus();toast(t('order.saved'));}
+   catch(error){if(el.isConnected){saving=false;el.querySelectorAll('button').forEach(button=>button.disabled=false);draw();feedback.textContent=error instanceof TypeError?t('Kan geen verbinding maken met Craft Portal. Controleer je server of vernieuw de pagina.'):error.message;}}
+  }
+ });
+ el.addEventListener('click',event=>{if(saving)event.stopImmediatePropagation();},true);
+ el.addEventListener('keydown',event=>{if(saving&&event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();}},true);
+ list.addEventListener('dragstart',event=>{if(saving){event.preventDefault();return;}dragged=event.target.closest('[data-order-slug]')?.dataset.orderSlug||null;if(dragged){event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',dragged);}});
+ list.addEventListener('dragover',event=>{if(dragged&&!saving){event.preventDefault();event.dataTransfer.dropEffect='move';}});
+ list.addEventListener('drop',event=>{event.preventDefault();const target=event.target.closest('[data-order-slug]')?.dataset.orderSlug;if(dragged&&target)move(dragged,draft.indexOf(target));dragged=null;});
+ list.addEventListener('dragend',()=>dragged=null);
+ draw();showModal(el);
+}
+
 async function downloads(slug){
  const r=await api(`/api/apps/${encodeURIComponent(slug)}/downloads`);
  const preferred=preferredInstaller(r.assets);const el=document.createElement('div');el.className='modal-back';
@@ -220,6 +256,7 @@ document.addEventListener('click',async event=>{
  try{
   if(target.dataset.workspace){const action=target.dataset.workspace;if(action==='home'){activeApp=null;updateWorkspace();}else if(action==='separate'){await openSeparately(activeApp);}else if(['close','retry'].includes(action)&&confirm(t('workspace.confirmClose'))){const slug=activeApp;sessions.get(slug)?.frame.remove();sessions.delete(slug);activeApp=null;updateWorkspace();if(action==='retry')await openApp(slug);}}
   else if(target.dataset.page){state.page=target.dataset.page;if(state.page==='admin')await loadAdmin();render();const heading=root.querySelector('h1');heading.tabIndex=-1;heading.focus();}
+  else if(target.id==='arrange-apps'){arrangeApps();}
   else if(target.id==='logout'){if(sessions.size&&!confirm(t('workspace.confirmLogout')))return;await api('/api/logout',{method:'POST'});state.user=null;state.csrf=null;state.admin=null;state.page='apps';resetWorkspace();render();}
   else if(target.dataset.fav){const slug=target.dataset.fav;state.favs=state.favs.includes(slug)?state.favs.filter(x=>x!==slug):[...state.favs,slug];saveFaves();render();root.querySelectorAll('[data-fav]').forEach(button=>{if(button.dataset.fav===slug)button.focus();});}
   else if(target.dataset.open){await openApp(target.dataset.open);}

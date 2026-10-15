@@ -3,6 +3,16 @@
 (() => {
  const dictionaries = {
   "en": {
+    "order.title": "Arrange applications",
+    "order.help": "Drag apps or use the arrows. Your saved order applies to the cards and dock on every device.",
+    "order.up": "Move {name} earlier",
+    "order.down": "Move {name} later",
+    "order.position": "{name}: position {position} of {count}",
+    "order.reset": "Default order",
+    "order.resetDraft": "Default order selected. Save to apply.",
+    "order.save": "Save order",
+    "order.saved": "Your app order has been saved.",
+
     "Nog nooit": "Never",
     "Kan geen verbinding maken met Craft Portal. Controleer je server of vernieuw de pagina.": "Cannot connect to Craft Portal. Check your server or reload the page.",
     "Hoofdnavigatie": "Main navigation",
@@ -223,6 +233,16 @@
     "CAD": "CAD"
   },
   "nl": {
+    "order.title": "Volgorde aanpassen",
+    "order.help": "Sleep apps of gebruik de pijlen. Je opgeslagen volgorde geldt voor kaarten en dock op elk apparaat.",
+    "order.up": "{name} naar voren",
+    "order.down": "{name} naar achteren",
+    "order.position": "{name}: positie {position} van {count}",
+    "order.reset": "Standaardvolgorde",
+    "order.resetDraft": "Standaardvolgorde gekozen. Sla op om toe te passen.",
+    "order.save": "Volgorde opslaan",
+    "order.saved": "Je appvolgorde is opgeslagen.",
+
     "Nog nooit": "Nog nooit",
     "Kan geen verbinding maken met Craft Portal. Controleer je server of vernieuw de pagina.": "Kan geen verbinding maken met Craft Portal. Controleer je server of vernieuw de pagina.",
     "Hoofdnavigatie": "Hoofdnavigatie",

@@ -138,3 +138,19 @@ with the publisher's SHA-256 verified: both embedded and separate editor startup
 render correctly under local HTTPS. The optional `fonts/manifest.txt` is absent
 from that upstream ZIP and returns a non-blocking 404. This does not validate all
 apps or the operator's DNS/TLS deployment.
+
+## Personal app order
+
+Choose **Arrange applications** beside the library search. Drag rows or use the
+up/down buttons, then **Save order**. Cards and dock use the saved order, including
+when search filters the cards. It is stored per portal account in SQLite and
+loads on every device after sign-in/reload. New apps append after the custom
+order, alphabetically. Favorites remain marked; a custom order controls placement.
+**Default order** followed by Save restores favorite-first/alphabetical sorting.
+Closing the dialog without saving leaves the current order unchanged.
+
+Reordering does not unload mounted app frames. Existing installations receive an
+additive preferences table automatically; retain the current appdata volume.
+Preferences are included in the normal database backup. Other users retain their
+own order. The dock's hover magnification is now 1.65× with space above the
+52 px bar; reduced-motion settings disable scaling.

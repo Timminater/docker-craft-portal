@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .artwork import Artwork, KINDS
@@ -92,6 +92,20 @@ class RollbackInput(BaseModel):
 class TicketInput(BaseModel):
     ticket: str
     slug: str
+
+
+class PreferencesInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    app_order: list[str] = Field(max_length=100)
+
+    @field_validator("app_order")
+    @classmethod
+    def valid_app_order(cls, value: list[str]) -> list[str]:
+        if any(not SLUG.fullmatch(slug) for slug in value):
+            raise ValueError("Invalid application identifier")
+        if len(set(value)) != len(value):
+            raise ValueError("Duplicate application identifiers")
+        return value
 
 
 class LoginInput(BaseModel):
@@ -321,6 +335,25 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         portal_only(request)
         s=auth.get_session(read_cookie(request, PORTAL_COOKIE),"portal")
         return {"setup_required":auth.setup_required(),"user":format_user(s) if s else None,"csrf":auth.csrf(s) if s else None,"multi_user":cfg.multi_user,"app_origin_configured":cfg.app_origin_configured,"app_origin_mode":cfg.app_origin_mode,"app_origin":cfg.single_app_url or None}
+
+    @app.get("/api/preferences")
+    def preferences(s: dict = Depends(session)):
+        row = db.one("SELECT app_order FROM user_preferences WHERE user_id=?", (s["user_id"],))
+        return {"app_order": json.loads(row["app_order"]) if row else []}
+
+    @app.put("/api/preferences")
+    def save_preferences(request: Request, payload: PreferencesInput, s: dict = Depends(session)):
+        changing(request, s)
+        with db.tx() as con:
+            if payload.app_order:
+                placeholders = ",".join("?" for _ in payload.app_order)
+                known = con.execute(f"SELECT slug FROM apps WHERE slug IN ({placeholders})", payload.app_order).fetchall()
+                if len(known) != len(payload.app_order):
+                    raise HTTPException(400, "Unknown application identifier")
+            con.execute("""INSERT INTO user_preferences(user_id,app_order) VALUES(?,?)
+                ON CONFLICT(user_id) DO UPDATE SET app_order=excluded.app_order""",
+                        (s["user_id"], json.dumps(payload.app_order)))
+        return {"app_order": payload.app_order}
 
     @app.post("/api/setup")
     def setup(request:Request,payload:FirstSetup):
