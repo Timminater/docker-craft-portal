@@ -243,6 +243,16 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
             raise HTTPException(404)
         return FileResponse(STATIC/filename,headers={"Cache-Control":"no-cache"})
 
+    @app.get("/_i18n.js")
+    async def i18n_js(request:Request):
+        if host_type(request)[0] not in {"portal", "app", "single_app"}: raise HTTPException(404)
+        return FileResponse(STATIC/"i18n.js", headers={"Cache-Control":"no-cache"})
+
+    @app.get("/_bridge.css")
+    async def bridge_css(request:Request):
+        if host_type(request)[0] not in {"app", "single_app"}: raise HTTPException(404)
+        return FileResponse(STATIC/"app.css", headers={"Cache-Control":"no-cache"})
+
     @app.get("/_bridge.js")
     async def bridge_js(request:Request):
         if host_type(request)[0] not in {"app", "single_app"}: raise HTTPException(404)

@@ -3,9 +3,9 @@
 The repository supplies a Docker **version 2 user template** at
 [`unraid/docker-craft-portal.xml`](../unraid/docker-craft-portal.xml). This is a
 manual installation option, not a Community Applications listing or submission.
-It pins `ghcr.io/timminater/docker-craft-portal:v0.1.0-rc.1`. The image is publicly published for AMD64 and ARM64; its release workflow passed
+It pins `ghcr.io/timminater/docker-craft-portal:v0.1.0-rc.2`. The image is publicly published for AMD64 and ARM64; its release workflow passed
 unit, Chromium/Firefox and multiarch container checks. See the
-[release](https://github.com/Timminater/docker-craft-portal/releases/tag/v0.1.0-rc.1)
+[release](https://github.com/Timminater/docker-craft-portal/releases/tag/v0.1.0-rc.2)
 and [package](https://github.com/Timminater/docker-craft-portal/pkgs/container/docker-craft-portal). Review
 [acceptance evidence](ACCEPTANCE.md) and [known limitations](KNOWN_LIMITATIONS.md)
 before public deployment. Installing a template does not verify production readiness.

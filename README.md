@@ -101,6 +101,12 @@ docker build -t craft-portal:test .
 
 Tests use synthetic ZIPs and a local in-memory HTTP client; they do **not** prove every real ArtCraft web build loads. For production approval also execute the checklist in `docs/KNOWN_LIMITATIONS.md` and browser smoke tests against actual official web release ZIPs.
 
+## Language and library
+
+The portal follows the first supported browser language: Dutch or English, with
+English as fallback. Setup and every portal page use the same translations.
+See [language behavior](docs/i18n.md) and [visual/console review](docs/UI_REVIEW.md).
+
 ## Development and acceptance
 
 `bash .codex/setup.sh` creates an isolated `.venv` and runs non-browser checks.

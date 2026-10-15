@@ -123,7 +123,7 @@ def launch(page):
 
 def test_browser_setup_wasm_csrf_rollback_restart_logout(browser, site):
     app, origin, apps, port = site
-    context = browser.new_context()
+    context = browser.new_context(locale="nl-NL")
     page = context.new_page()
     with serve(app, port):
         assert context.request.get(apps + '/a/photocraft/v/v2.0.0/fixture.wasm').status == 401
@@ -146,7 +146,7 @@ def test_browser_setup_wasm_csrf_rollback_restart_logout(browser, site):
         assert response.status == 200
         assert response.headers['content-type'].startswith('application/wasm')
         page.locator('[data-download="photocraft"]').click()
-        page.get_by_role('dialog', name='Native download').wait_for()
+        page.get_by_role('dialog').wait_for()
         assert page.locator('#installer-results a').count() == 3
         for platform, suffix in [('windows', '.msi'), ('macos', '.dmg'), ('linux', '.AppImage')]:
             page.locator('#installer-platform').select_option(platform)
@@ -250,7 +250,7 @@ def test_multiuser_browser_origin_isolation(browser, tmp_path):
     try:
         with serve(app, port, ssl_certfile=str(cert), ssl_keyfile=str(key)):
             launched = []
-            context = browser.new_context(ignore_https_errors=True)
+            context = browser.new_context(ignore_https_errors=True, locale="nl-NL")
             contexts.append(context)
             for username in ('admin','another'):
                 # Switch only the portal identity, keeping app cookies and browser storage.
@@ -293,7 +293,7 @@ def test_multiuser_browser_origin_isolation(browser, tmp_path):
                     return (await file.getFile()).text();
                 }""") == 'first-user-only'
 
-            unauthenticated = browser.new_context(ignore_https_errors=True)
+            unauthenticated = browser.new_context(ignore_https_errors=True, locale="nl-NL")
             try:
                 forbidden = unauthenticated.new_page()
                 assert forbidden.goto(launched[0].url).status == 401
@@ -303,7 +303,7 @@ def test_multiuser_browser_origin_isolation(browser, tmp_path):
             stolen = [cookie for cookie in contexts[0].cookies(first_origin) if cookie['httpOnly']]
             for cookie in stolen:
                 cookie['domain'] = launched[1].url.split('/')[2].split(':')[0]
-            isolated = browser.new_context(ignore_https_errors=True)
+            isolated = browser.new_context(ignore_https_errors=True, locale="nl-NL")
             try:
                 isolated.add_cookies(stolen)
                 forbidden = isolated.new_page()

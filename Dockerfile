@@ -16,6 +16,8 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && chown craft:craft /data \
     && chmod 0700 /data
 COPY --chown=root:root portal ./portal
+# Source checkouts may use a private umask; the unprivileged runtime needs read access.
+RUN chmod -R a+rX /app/portal
 USER 10001:10001
 EXPOSE 8080
 VOLUME /data
