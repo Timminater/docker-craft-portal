@@ -106,7 +106,11 @@ def test_workspace_preserves_app_state_navigation_and_accessibility(browser, wor
     page.evaluate("""origin => {
         const frame = document.querySelector('iframe[title=\"Photocraft\"]');
         window.dispatchEvent(new MessageEvent('message', {origin, source:window, data:{type:'craft-bridge-error',slug:'photocraft'}}));
-        window.dispatchEvent(new MessageEvent('message', {origin:'https://untrusted.example', source:frame.contentWindow, data:{type:'craft-bridge-error',slug:'photocraft'}}));
+        // Firefox rejects a cross-origin WindowProxy in MessageEventInit.
+        // Define the synthetic source directly so the same handler checks run.
+        const forged = new MessageEvent('message', {origin:'https://untrusted.example', data:{type:'craft-bridge-error',slug:'photocraft'}});
+        Object.defineProperty(forged, 'source', {value:frame.contentWindow});
+        window.dispatchEvent(forged);
     }""", apps)
     assert page.locator('.workspace-status').inner_text() == before_status
     assert photo.locator('#document').input_value() == 'unsaved photo'

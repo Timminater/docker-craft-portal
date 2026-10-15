@@ -85,7 +85,8 @@ def test_localized_portal_pages_without_console_errors(browser, site, locale, la
         assert page.locator('#installer-results a').count() == 3
         page.keyboard.press('Escape')
         navigate('admin')
-        assert page.locator('#settings-form').is_visible()
+        from playwright.sync_api import expect
+        expect(page.locator('#settings-form')).to_be_visible()
         page.locator('[data-versions="photocraft"]').click()
         page.get_by_role('dialog').wait_for()
         settled('versions')

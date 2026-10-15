@@ -199,12 +199,17 @@ def test_browser_setup_wasm_csrf_rollback_restart_logout(browser, site):
         page.get_by_role('button', name='Applicaties', exact=True).click()
         rolled_back = launch(page)
         rolled_back.get_by_role('heading', name='Fixture v1').wait_for()
+        recovery_url = rolled_back.url
         context.set_offline(True)
         from playwright.sync_api import Error
         with pytest.raises(Error):
             rolled_back.reload()
         context.set_offline(False)
-        rolled_back.reload()
+        # Firefox can still be committing its internal offline error document.
+        # Recover in a clean tab on the exact authorized app URL.
+        rolled_back.close()
+        rolled_back = context.new_page()
+        rolled_back.goto(recovery_url)
         rolled_back.get_by_text('WASM ready', exact=True).wait_for()
     # Recreate application/auth/database objects against the same persisted data.
     from portal.server import create_app
