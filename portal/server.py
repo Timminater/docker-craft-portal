@@ -126,6 +126,11 @@ class SourceInput(BaseModel):
     repository: str = Field(min_length=1, max_length=100)
 
 
+class NewAppInput(SourceInput):
+    slug: str = Field(min_length=1, max_length=35)
+    name: str = Field(min_length=1, max_length=80)
+
+
 def same_origin(request: Request, cfg: Config):
     origin = request.headers.get("origin")
     expected = cfg.public_url
@@ -506,6 +511,27 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         return {'sources': [dict(row, owner=repository(db,row['slug'],cfg.trusted_owner)[0],
                                  repository=repository(db,row['slug'],cfg.trusted_owner)[1],
                                  custom=bool(db.one('SELECT slug FROM app_sources WHERE slug=?',(row['slug'],)))) for row in rows]}
+
+    @app.post('/api/admin/apps')
+    def add_custom_app(request: Request, payload: NewAppInput, s: dict = Depends(admin_session)):
+        changing(request, s)
+        name = payload.name.strip()
+        if not SLUG.fullmatch(payload.slug) or not valid_repository(payload.owner, payload.repository) or not name or any(ord(c)<32 or ord(c)==127 for c in name):
+            raise HTTPException(400, 'Invalid application or GitHub repository')
+        # Do not let a custom registration preempt an official or fixed app.
+        from .updater import DESCRIPTIONS
+        from .sources import EXTRA_APPS
+        if payload.slug in DESCRIPTIONS or payload.slug in EXTRA_APPS:
+            raise HTTPException(409, 'Application identifier already reserved')
+        with updater.lock:
+            with db.tx() as con:
+                if con.execute('SELECT slug FROM apps WHERE slug=?', (payload.slug,)).fetchone():
+                    raise HTTPException(409, 'Application identifier already exists')
+                con.execute('INSERT INTO apps(slug,name,description) VALUES(?,?,?)', (payload.slug,name,'Creatieve applicatie'))
+                con.execute('INSERT INTO app_sources(slug,owner,repository) VALUES(?,?,?)', (payload.slug,payload.owner,payload.repository))
+        db.log('warning','app_source_added',f'{s["username"]}: {payload.owner}/{payload.repository}',payload.slug)
+        scheduled = updater.trigger()
+        return {'ok': True, 'scheduled': scheduled}
 
     @app.put('/api/admin/sources/{slug}')
     def save_source(slug: str, request: Request, payload: SourceInput, s: dict = Depends(admin_session)):

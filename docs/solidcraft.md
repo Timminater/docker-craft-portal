@@ -16,6 +16,19 @@ owner and repository to restore the official catalog check for ArtCraft apps.
 Only stable web ZIP releases with the expected app filename and a GitHub SHA-256
 digest are supported; changing the source cannot add an arbitrary app type.
 
+Under Administration, **Add an application** can register another compatible
+Craft web app without rebuilding the portal. Enter a unique lowercase identifier
+ending in `craft`, an application name and its exact GitHub owner/repository.
+The latest stable tag must have the form `vX.Y.Z`, and its release must include
+`<identifier>-web-X.Y.Z.zip` with GitHub's SHA-256 digest. The bundle must contain
+an `index.html`, JavaScript and WebAssembly, and pass the existing size, archive
+and checksum checks. A digest proves download integrity, not that the source's
+code is safe; the administrator is responsible for trusting the publisher.
+An update check is started when possible, otherwise use **Check now** after the
+current check finishes. Failed installs are reported under Administration.
+Unknown apps use fallback artwork and a generic description; browser and app
+compatibility is not guaranteed for arbitrary third-party builds.
+
 Update the portal image and reload. With automatic discovery enabled (the default),
 the startup updater discovers SolidCraft and installs its latest supported stable
 release. Alternatively use Administration → Check now. If automatic discovery was
