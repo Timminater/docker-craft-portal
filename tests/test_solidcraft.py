@@ -10,7 +10,7 @@ from portal.updater import InstallError, parse_release
 from tests.test_updater import zip_data
 
 
-def release(version='v1.2.3', *, owner='bherbruck'):
+def release(version='v1.2.3', *, owner='tangency-labs'):
     data = zip_data('solidcraft', version)
     filename = f'solidcraft-web-{version[1:]}.zip'
     asset = {'name': filename, 'browser_download_url': f'https://github.com/{owner}/solidcraft/releases/download/{version}/{filename}',
@@ -37,7 +37,7 @@ class Opener:
 
 def test_registry_only_exposes_authorized_repository():
     assert set(EXTRA_APPS) == {'solidcraft'}
-    assert app_owner('solidcraft', 'storytold') == 'bherbruck'
+    assert app_owner('solidcraft', 'storytold') == 'tangency-labs'
     assert app_owner('photocraft', 'storytold') == 'storytold'
     assert app_owner('evilcraft', 'storytold') == 'storytold'
     bad, _ = release(owner='attacker')
@@ -46,12 +46,12 @@ def test_registry_only_exposes_authorized_repository():
 
 
 @pytest.mark.parametrize('url', [
-    'https://github.com/bherbruck/evilcraft/releases/download/v1.2.3/evilcraft-web-1.2.3.zip',
-    'https://github.com/bherbruck/solidcraft-other/releases/download/v1.2.3/solidcraft-web-1.2.3.zip',
+    'https://github.com/tangency-labs/evilcraft/releases/download/v1.2.3/evilcraft-web-1.2.3.zip',
+    'https://github.com/tangency-labs/solidcraft-other/releases/download/v1.2.3/solidcraft-web-1.2.3.zip',
     'https://github.com/attacker/solidcraft/releases/download/v1.2.3/solidcraft-web-1.2.3.zip',
-    'https://github.com/bherbruck/solidcraft/archive/main.zip',
-    'https://github.com/bherbruck/solidcraft/releases/download/v1.2.3/other.zip',
-    'https://github.com/bherbruck/solidcraft/releases/download/v1.2.3/solidcraft-web-1.2.3.zip?extra=1',
+    'https://github.com/tangency-labs/solidcraft/archive/main.zip',
+    'https://github.com/tangency-labs/solidcraft/releases/download/v1.2.3/other.zip',
+    'https://github.com/tangency-labs/solidcraft/releases/download/v1.2.3/solidcraft-web-1.2.3.zip?extra=1',
 ])
 def test_download_rejects_other_extra_publisher_paths(factory, tmp_path, url):
     updater = factory().state.updater
@@ -69,7 +69,7 @@ def test_solidcraft_install_checksum_and_rollback(factory, monkeypatch):
     urls = []
     def metadata(url, **kwargs):
         urls.append(url)
-        assert url == 'https://api.github.com/repos/bherbruck/solidcraft/releases/latest'
+        assert url == 'https://api.github.com/repos/tangency-labs/solidcraft/releases/latest'
         payload, data = release(current[0])
         updater.opener = Opener(data)
         return json.dumps(payload).encode()
@@ -83,13 +83,13 @@ def test_solidcraft_install_checksum_and_rollback(factory, monkeypatch):
     payload, data = release('v1.2.5')
     updater.opener = Opener(data + b'corrupt')
     with pytest.raises(InstallError, match='larger than expected'):
-        updater.install('solidcraft', parse_release('solidcraft', payload, 'bherbruck'))
+        updater.install('solidcraft', parse_release('solidcraft', payload, 'tangency-labs'))
     assert app.state.db.one("SELECT active_version FROM apps WHERE slug='solidcraft'")['active_version'] == 'v1.2.3'
     assert not (app.state.cfg.data_dir / 'apps/solidcraft/versions/v1.2.5').exists()
     # A same-size payload cannot bypass digest validation either.
     updater.opener = Opener(b'x' * len(data))
     with pytest.raises(InstallError, match='checksum mismatch'):
-        updater.install('solidcraft', parse_release('solidcraft', payload, 'bherbruck'))
+        updater.install('solidcraft', parse_release('solidcraft', payload, 'tangency-labs'))
 
 
 def test_extra_repository_updates_even_when_catalog_fails(factory, monkeypatch):
@@ -101,7 +101,7 @@ def test_extra_repository_updates_even_when_catalog_fails(factory, monkeypatch):
         requested.append(url)
         if url == app.state.cfg.catalog_url:
             raise InstallError('catalog unavailable')
-        assert url == 'https://api.github.com/repos/bherbruck/solidcraft/releases/latest'
+        assert url == 'https://api.github.com/repos/tangency-labs/solidcraft/releases/latest'
         return json.dumps(payload).encode()
     monkeypatch.setattr(updater, 'request', metadata)
     updater.opener = Opener(data)
@@ -121,7 +121,7 @@ def test_extra_discovery_and_existing_update_flags(factory, monkeypatch):
         if url == app.state.cfg.catalog_url:
             return b'<a href="/apps/photocraft">PhotoCraft</a>'
         payload, _ = release()
-        assert '/bherbruck/solidcraft/' in url
+        assert '/tangency-labs/solidcraft/' in url
         return json.dumps(payload).encode()
     monkeypatch.setattr(updater, 'request', metadata)
     assert updater.check() is True
@@ -141,7 +141,7 @@ def test_extra_trust_does_not_bypass_original_catalog_publisher(factory, monkeyp
     def metadata(url, **kwargs):
         if url == updater.cfg.catalog_url:
             return b'<a href="/apps/photocraft">PhotoCraft</a>'
-        return b'<a href="https://github.com/bherbruck/photocraft">untrusted publisher</a>'
+        return b'<a href="https://github.com/tangency-labs/photocraft">untrusted publisher</a>'
     monkeypatch.setattr(updater, 'request', metadata)
     monkeypatch.setattr(updater, 'sync_app', lambda slug: synced.append(slug) or 'current')
     assert updater.check() is True

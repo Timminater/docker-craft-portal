@@ -88,7 +88,7 @@ before these HTTP routes and cannot be remediated by their authentication policy
 
 ## Explicit SolidCraft publisher
 
-The user authorized bherbruck/solidcraft specifically. An exact source registry
+At the time of this review, the user authorized bherbruck/solidcraft specifically. An exact source registry
 keeps this separate from the official catalog; neither arbitrary GitHub owners
 nor other repositories of this owner gain trust. Metadata and original archive
 digests remain verified, with the same staged activation and safe ZIP rules.
@@ -99,6 +99,16 @@ Native release links resolve to the actual configured publisher. Artwork comes
 from pinned, licensed upstream source files and stays portal-authenticated.
 Independent read-only review found no concrete blockers. Shared-origin browser
 storage retains the previously documented profile boundary for all hosted apps.
+
+As of v2026.10.28.0, SolidCraft's default repository follows its GitHub transfer
+to tangency-labs/solidcraft. Administrators can additionally select an exact
+GitHub owner and repository for each installed app. A custom source overrides
+the official catalog publisher-link check for that app; it must therefore be
+trusted by the administrator. It does not permit arbitrary download hosts or
+archives without GitHub's published digest.
+The checksum does not establish that a publisher's code is safe. Source changes
+and application updates are serialized, and invalid updates preserve the
+previously active version.
 
 ## Account settings and storage diagnostics (2026-10-15)
 

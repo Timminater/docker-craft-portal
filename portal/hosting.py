@@ -2,7 +2,7 @@
 import re
 
 _SCRIPT = re.compile(r'<script\b[^>]*>(.*?)</script\s*>', re.I | re.S)
-_REGISTRATION = 'if("serviceWorker"innavigator){addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));}'
+_SAFE_REGISTRATION = re.compile(r'''if\s*\(\s*["']serviceWorker["']\s+in\s+navigator\s*\)\s*\{\s*addEventListener\s*\(\s*["']load["']\s*,\s*\(\s*\)\s*=>\s*navigator\.serviceWorker\.register\s*\(\s*["']sw\.js["']\s*\)\.catch\s*\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)\s*\)\s*;?\s*\}''')
 
 
 def solidcraft_index(source: str) -> str:
@@ -13,13 +13,14 @@ def solidcraft_index(source: str) -> str:
     """
     def adapt(match):
         body = match.group(1)
-        if 'serviceWorker' not in body or '.register' not in body:
+        compact_source = re.sub(r'\s+', '', body)
+        if 'serviceWorker' not in compact_source or '.register' not in compact_source:
             return match.group(0)
-        body = re.sub(r'^\s*//[^\r\n]*', '', body, flags=re.M)
-        compact = re.sub(r'\s+', '', body).replace("'", '"')
-        if compact != _REGISTRATION:
+        cleaned = _SAFE_REGISTRATION.sub('', body)
+        compact = re.sub(r'\s+', '', cleaned)
+        if cleaned == body or ('serviceWorker' in compact and '.register' in compact):
             raise ValueError('Unsupported SolidCraft offline registration; preserving installed version')
-        return '<!-- Offline application caching disabled for authenticated portal hosting. -->'
+        return match.group(0).replace(body, cleaned)
     result = _SCRIPT.sub(adapt, source)
     if not re.search(r'rel=[\"\']icon[\"\']', result, re.I):
         result = result.replace('</head>', '<link rel="icon" href="data:,"></head>', 1)

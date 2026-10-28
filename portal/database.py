@@ -73,6 +73,11 @@ CREATE TABLE IF NOT EXISTS apps (
  installed_at REAL,
  updated_at REAL
 );
+CREATE TABLE IF NOT EXISTS app_sources (
+ slug TEXT PRIMARY KEY REFERENCES apps(slug) ON DELETE CASCADE,
+ owner TEXT NOT NULL,
+ repository TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS versions (
  slug TEXT NOT NULL REFERENCES apps(slug) ON DELETE CASCADE,
  version TEXT NOT NULL,

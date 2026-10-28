@@ -28,11 +28,20 @@ def test_offline_adapter_preserves_bootstrap_and_rejects_unknown_registration():
         solidcraft_index('<script>init();navigator.serviceWorker.register("other.js");</script>')
 
 
+def test_offline_adapter_preserves_surrounding_script():
+    source = '<head></head><script>\nif ("serviceWorker" in navigator) {\naddEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));\n}\naddEventListener("beforeinstallprompt", handler);\n</script>'
+    result = solidcraft_index(source)
+    assert 'navigator.serviceWorker.register' not in result
+    assert 'addEventListener("beforeinstallprompt", handler)' in result
+    with pytest.raises(ValueError):
+        solidcraft_index(source.replace('handler);', 'handler); navigator.serviceWorker.register("other.js");'))
+
+
 def test_unknown_offline_bootstrap_cannot_replace_active_release(factory):
     app=factory();updater=app.state.updater
     app.state.db.run("INSERT INTO apps(slug,name) VALUES('solidcraft','SolidCraft')")
     payload,data=release();updater.opener=Opener(data)
-    updater.install('solidcraft',parse_release('solidcraft',payload,'bherbruck'))
+    updater.install('solidcraft',parse_release('solidcraft',payload,'tangency-labs'))
     payload,_=release('v1.2.4')
     buf=io.BytesIO()
     with zipfile.ZipFile(buf,'w') as archive:
@@ -40,7 +49,7 @@ def test_unknown_offline_bootstrap_cannot_replace_active_release(factory):
         archive.writestr('app.js','test');archive.writestr('app.wasm',b'\x00asm\x01\x00\x00\x00')
     data=buf.getvalue();payload['assets'][0].update(size=len(data),digest='sha256:'+hashlib.sha256(data).hexdigest())
     updater.opener=Opener(data)
-    with pytest.raises(ValueError):updater.install('solidcraft',parse_release('solidcraft',payload,'bherbruck'))
+    with pytest.raises(ValueError):updater.install('solidcraft',parse_release('solidcraft',payload,'tangency-labs'))
     assert app.state.db.one("SELECT active_version FROM apps WHERE slug='solidcraft'")['active_version']=='v1.2.3'
     assert not (app.state.cfg.data_dir/'apps/solidcraft/versions/v1.2.4').exists()
 
@@ -54,7 +63,7 @@ def test_solidcraft_auth_workers_and_correct_publisher(tmp_path):
     with TestClient(app,base_url=app.state.cfg.public_url) as portal,TestClient(app,base_url=app.state.cfg.single_app_url) as assets:
         assert setup(portal,app).status_code==200
         csrf=portal.get('/api/bootstrap').json()['csrf']
-        assert portal.get('/api/apps/solidcraft/downloads').json()['github']=='https://github.com/bherbruck/solidcraft/releases'
+        assert portal.get('/api/apps/solidcraft/downloads').json()['github']=='https://github.com/tangency-labs/solidcraft/releases'
         root='/a/solidcraft/v/v1.0.0/'
         assert assets.get(root).status_code==401
         launched=portal.post('/api/apps/solidcraft/launch?embedded=true',headers=headers(csrf)).json()

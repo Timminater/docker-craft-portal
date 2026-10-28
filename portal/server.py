@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .artwork import Artwork, KINDS
-from .sources import app_owner
+from .sources import app_owner, repository, valid_repository
 from .auth import APP_COOKIE, PORTAL_COOKIE, Auth, digest
 from .account import register_account_routes
 from .config import Config
@@ -118,6 +118,12 @@ class LoginInput(BaseModel):
     username: str = Field(min_length=1, max_length=48)
     password: str = Field(min_length=1, max_length=1024)
     otp: str = Field(default="", max_length=80)
+
+
+class SourceInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    owner: str = Field(min_length=1, max_length=39)
+    repository: str = Field(min_length=1, max_length=100)
 
 
 def same_origin(request: Request, cfg: Config):
@@ -457,7 +463,8 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         app_record=db.one("SELECT * FROM apps WHERE slug=?",(slug,))
         if not app_record or (app_record["disabled"] and s["role"]!="admin"):
             raise HTTPException(404)
-        return {"assets":db.all("SELECT name,url FROM release_assets WHERE slug=? ORDER BY name",(slug,)),"github":f"https://github.com/{app_owner(slug,cfg.trusted_owner)}/{slug}/releases"}
+        owner, repo = repository(db,slug,cfg.trusted_owner)
+        return {"assets":db.all("SELECT name,url FROM release_assets WHERE slug=? ORDER BY name",(slug,)),"github":f"https://github.com/{owner}/{repo}/releases"}
 
     @app.post("/api/apps/{slug}/launch")
     async def launch(slug:str,request:Request,embedded:bool=False,s:dict=Depends(session)):
@@ -491,7 +498,34 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         used=sum(f.stat().st_size for f in (cfg.data_dir/"apps").rglob("*") if f.is_file())
         return {"apps":rows,"count":len(rows),"users":count,"bytes":used,"running":updater.running,
                 "last_check":updater.last_check,"next_check":updater.next_check,"last_result":updater.last_result,
-                "settings":settings,"multi_user":cfg.multi_user}
+                "settings":settings,"multi_user":cfg.multi_user,"sources": sources(s)['sources']}
+
+    @app.get('/api/admin/sources')
+    def sources(s: dict = Depends(admin_session)):
+        rows = db.all('SELECT slug,name FROM apps ORDER BY name')
+        return {'sources': [dict(row, owner=repository(db,row['slug'],cfg.trusted_owner)[0],
+                                 repository=repository(db,row['slug'],cfg.trusted_owner)[1],
+                                 custom=bool(db.one('SELECT slug FROM app_sources WHERE slug=?',(row['slug'],)))) for row in rows]}
+
+    @app.put('/api/admin/sources/{slug}')
+    def save_source(slug: str, request: Request, payload: SourceInput, s: dict = Depends(admin_session)):
+        changing(request,s)
+        if not SLUG.fullmatch(slug) or not valid_repository(payload.owner,payload.repository):
+            raise HTTPException(400,'Invalid GitHub repository')
+        with updater.lock:
+            if not db.one('SELECT slug FROM apps WHERE slug=?',(slug,)):
+                raise HTTPException(404)
+            if repository(db,slug,cfg.trusted_owner) == (payload.owner,payload.repository):
+                return {'ok': True}
+            with db.tx() as con:
+                if (payload.owner,payload.repository) == (app_owner(slug,cfg.trusted_owner),slug):
+                    con.execute('DELETE FROM app_sources WHERE slug=?',(slug,))
+                else:
+                    con.execute('INSERT INTO app_sources(slug,owner,repository) VALUES(?,?,?) ON CONFLICT(slug) DO UPDATE SET owner=excluded.owner,repository=excluded.repository',(slug,payload.owner,payload.repository))
+                con.execute('DELETE FROM release_assets WHERE slug=?',(slug,))
+                con.execute("UPDATE apps SET latest_version=NULL,last_error='' WHERE slug=?",(slug,))
+        db.log('warning','app_source_changed',f'{s["username"]}: {payload.owner}/{payload.repository}',slug)
+        return {'ok': True}
 
     @app.put("/api/admin/settings")
     async def settings(request:Request,payload:SettingsInput,s:dict=Depends(admin_session)):

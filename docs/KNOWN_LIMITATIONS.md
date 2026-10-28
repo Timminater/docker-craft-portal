@@ -81,7 +81,7 @@ precise remaining work.
 ## Deliberately outside scope
 
 Central document synchronization, OIDC/SSO, recovery emails/password resets,
-custom/unsigned publishers, prerelease installs and cloud storage automation.
+releases without a published digest, prerelease installs and cloud storage automation. Administrators can explicitly configure exact GitHub sources per app. A published digest checks download integrity, not publisher identity or code safety.
 
 Self-service password changes, owned session revocation and optional TOTP with
 single-use recovery codes are supported. Browser storage estimates/persistence

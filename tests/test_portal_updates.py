@@ -33,13 +33,13 @@ def test_portal_status_and_explicit_check_require_the_correct_authority(factory,
         assert other.post('/api/admin/portal/check', headers=headers(other_csrf)).status_code == 403
         assert calls == []
         result = admin.post('/api/admin/portal/check', headers=headers(csrf))
-        assert result.status_code == 200 and result.json()['latest_version'] == 'v2026.10.16.0'
-        assert other.get('/api/portal/status').json()['latest_version'] == 'v2026.10.16.0'
+        assert result.status_code == 200 and result.json()['latest_version'] == 'v2026.10.29.0'
+        assert other.get('/api/portal/status').json()['latest_version'] == 'v2026.10.29.0'
         assert len(calls) == 1
         other.close()
 
 
-def release(tag='v2026.10.16.0', repository=REPOSITORIES[0]):
+def release(tag='v2026.10.29.0', repository=REPOSITORIES[0]):
     return json.dumps({'tag_name': tag, 'draft': False, 'prerelease': False,
                        'html_url': f'https://github.com/{repository}/releases/tag/{tag}'}).encode()
 
@@ -53,7 +53,7 @@ def test_metadata_check_is_explicit_cached_and_calendar_ordered(factory, monkeyp
     assert requests == []
     first = overview.check()
     assert first['version'] == VERSION
-    assert first['latest_version'] == 'v2026.10.16.0'
+    assert first['latest_version'] == 'v2026.10.29.0'
     assert first['update_available']
     assert first['check_error'] is None
     assert overview.check() == first
@@ -95,7 +95,7 @@ def test_fallback_only_for_missing_exact_canonical_repository(factory, monkeypat
 
 
 @pytest.mark.parametrize('change', [
-    {'html_url': 'https://evil.example/release'}, {'tag_name': 'v2026.10.16.0-rc1'},
+    {'html_url': 'https://evil.example/release'}, {'tag_name': 'v2026.10.29.0-rc1'},
     {'prerelease': True}, {'draft': True},
 ])
 def test_untrusted_or_prerelease_metadata_preserves_last_known_release(factory, monkeypatch, change):
@@ -127,7 +127,7 @@ def test_status_during_network_check_does_not_block(factory, monkeypatch):
         assert overview.status()['checked_at'] is None
     finally:
         proceed.set(); check.join(3)
-    assert overview.status()['latest_version'] == 'v2026.10.16.0'
+    assert overview.status()['latest_version'] == 'v2026.10.29.0'
 
 
 def test_snapshot_filters_disabled_apps_and_never_returns_raw_errors(factory):

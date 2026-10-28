@@ -22,7 +22,7 @@ import zipfile
 from .config import Config
 from .database import Database
 from .hosting import solidcraft_index
-from .sources import EXTRA_APPS, app_owner
+from .sources import EXTRA_APPS, app_owner, repository
 from .version import VERSION
 
 LOG = logging.getLogger(__name__)
@@ -121,7 +121,8 @@ def verify_official_app_page(page: str, slug: str, catalog_url: str, owner: str)
     raise InstallError(f"{slug}: no official publisher link found in catalog page")
 
 
-def parse_release(slug: str, release: dict, owner: str) -> dict:
+def parse_release(slug: str, release: dict, owner: str, repo: str | None = None) -> dict:
+    repo = repo or slug
     tag = release.get("tag_name", "")
     if not TAG.fullmatch(tag) or release.get("draft") or release.get("prerelease"):
         raise InstallError(f"{slug}: latest release is not a supported stable version")
@@ -130,7 +131,7 @@ def parse_release(slug: str, release: dict, owner: str) -> dict:
     if len(candidates) != 1:
         raise InstallError(f"{slug}: no WebAssembly release ZIP named {filename}")
     asset = candidates[0]
-    expected_url = f"https://github.com/{owner}/{slug}/releases/download/{tag}/{filename}"
+    expected_url = f"https://github.com/{owner}/{repo}/releases/download/{tag}/{filename}"
     if asset.get("browser_download_url") != expected_url:
         raise InstallError(f"{slug}: unusual release download URL")
     sha = asset.get("digest", "")
@@ -144,7 +145,7 @@ def parse_release(slug: str, release: dict, owner: str) -> dict:
         url = a.get("browser_download_url", "")
         if (isinstance(name,str) and isinstance(url,str)
                 and (name.endswith((".msi",".dmg",".AppImage",".deb",".rpm",".flatpak","-portable.zip")))
-                and url.startswith(f"https://github.com/{owner}/{slug}/releases/download/{tag}/")
+                and url.startswith(f"https://github.com/{owner}/{repo}/releases/download/{tag}/")
                 and not name.endswith(".AppImage.zsync")):
             native.append({"name":name,"url":url})
     return {"version":tag,"asset":asset,"native":native}
@@ -285,10 +286,12 @@ class Updater:
 
     def download(self,url: str, expected_size: int, expected_digest: str, destination: Path):
         p = urlparse(url)
-        additional = bool(re.fullmatch(r"/bherbruck/solidcraft/releases/download/v[0-9]+\.[0-9]+\.[0-9]+/solidcraft-web-[0-9]+\.[0-9]+\.[0-9]+\.zip", p.path))
+        match = re.fullmatch(r"/([^/]+)/([^/]+)/releases/download/(v[0-9]+\.[0-9]+\.[0-9]+)/([a-z][a-z0-9]{1,29}craft)-web-([0-9]+\.[0-9]+\.[0-9]+)\.zip", p.path)
+        additional = bool(match and match[3] == 'v' + match[5] and
+                          (match[1], match[2]) == repository(self.db, match[4], self.cfg.trusted_owner))
         if (p.scheme!="https" or p.hostname!="github.com" or p.port not in (None,443)
                 or p.username or p.password or p.query or p.fragment
-                or not (p.path.startswith(f"/{self.cfg.trusted_owner}/") or additional)):
+                or not additional):
             raise InstallError("Untrusted asset URL")
         headers = {"User-Agent":f"craft-portal/{VERSION.removeprefix('v')}"}
         total=0; h=hashlib.sha256()
@@ -311,10 +314,10 @@ class Updater:
             raise InstallError("Release ZIP size or checksum mismatch")
 
     def sync_app(self,slug: str):
-        owner=app_owner(slug,self.cfg.trusted_owner)
-        api=f"https://api.github.com/repos/{owner}/{slug}/releases/latest"
+        owner,repo=repository(self.db,slug,self.cfg.trusted_owner)
+        api=f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
         release=json.loads(self.request(api))
-        parsed=parse_release(slug,release,owner)
+        parsed=parse_release(slug,release,owner,repo)
         version=parsed["version"]
         known=self.db.one("SELECT * FROM apps WHERE slug=?",(slug,))
         extra = EXTRA_APPS.get(slug)
@@ -420,7 +423,7 @@ class Updater:
                 LOG.exception("Catalog check failed")
                 self.db.log("error","catalog_failed",catalog_error)
             existing={app["slug"] for app in self.db.all("SELECT slug FROM apps")}
-            slugs=sorted(set(catalog_slugs) | set(EXTRA_APPS))
+            slugs=sorted(set(catalog_slugs) | set(EXTRA_APPS) | {x['slug'] for x in self.db.all('SELECT slug FROM app_sources')})
             if self.db.setting("auto_discover_apps")!="true":
                 slugs=[x for x in slugs if x in existing]
             errors=[]; updates=0
@@ -428,7 +431,7 @@ class Updater:
                 if self.stop_event.is_set(): break
                 self.set_progress(slug, "metadata")
                 try:
-                    if slug not in EXTRA_APPS:
+                    if slug not in EXTRA_APPS and not self.db.one('SELECT slug FROM app_sources WHERE slug=?', (slug,)):
                         # Original publishers still require the official catalog link.
                         app_page=self.request(f"{self.cfg.catalog_url}/{slug}").decode("utf-8")
                         verify_official_app_page(app_page,slug,self.cfg.catalog_url,self.cfg.trusted_owner)
