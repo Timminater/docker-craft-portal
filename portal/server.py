@@ -12,6 +12,7 @@ import mimetypes
 from pathlib import Path
 import re
 import secrets
+import shutil
 import time
 from urllib.parse import urlparse
 
@@ -480,10 +481,12 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         if not cfg.app_origin_configured:
             raise HTTPException(409,"Configure a separate CRAFT_SINGLE_APP_URL or CRAFT_APPS_DOMAIN before launching apps")
         if cfg.isolated_app_origins:
-            ticket=auth.new_ticket(s,slug)
+            ticket=auth.new_ticket(s,slug,require_active=True)
+            if not ticket: raise HTTPException(404,"Application is not ready")
             url=f"https://{slug}--{s['public_id']}.{cfg.apps_domain}/#ticket={ticket}&slug={slug}"
         else:
-            ticket=auth.new_ticket(s,slug)
+            ticket=auth.new_ticket(s,slug,require_active=True)
+            if not ticket: raise HTTPException(404,"Application is not ready")
             url=f"{cfg.single_app_url}/#ticket={ticket}&slug={slug}"
         if embedded:
             url += "&embedded=1"
@@ -503,7 +506,8 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         used=sum(f.stat().st_size for f in (cfg.data_dir/"apps").rglob("*") if f.is_file())
         return {"apps":rows,"count":len(rows),"users":count,"bytes":used,"running":updater.running,
                 "last_check":updater.last_check,"next_check":updater.next_check,"last_result":updater.last_result,
-                "settings":settings,"multi_user":cfg.multi_user,"sources": sources(s)['sources']}
+                "settings":settings,"multi_user":cfg.multi_user,"sources": sources(s)['sources'],
+                "removed_apps": db.all('SELECT slug,name FROM removed_apps ORDER BY name')}
 
     @app.get('/api/admin/sources')
     def sources(s: dict = Depends(admin_session)):
@@ -525,6 +529,8 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
             raise HTTPException(409, 'Application identifier already reserved')
         with updater.lock:
             with db.tx() as con:
+                if con.execute('SELECT slug FROM removed_apps WHERE slug=?', (payload.slug,)).fetchone():
+                    raise HTTPException(409, 'Application was removed; restore it instead')
                 if con.execute('SELECT slug FROM apps WHERE slug=?', (payload.slug,)).fetchone():
                     raise HTTPException(409, 'Application identifier already exists')
                 con.execute('INSERT INTO apps(slug,name,description) VALUES(?,?,?)', (payload.slug,name,'Creatieve applicatie'))
@@ -532,6 +538,56 @@ def create_app(config: Config | None = None, start_updater: bool | None = None) 
         db.log('warning','app_source_added',f'{s["username"]}: {payload.owner}/{payload.repository}',payload.slug)
         scheduled = updater.trigger()
         return {'ok': True, 'scheduled': scheduled}
+
+    @app.delete('/api/admin/apps/{slug}')
+    def remove_app(slug: str, request: Request, s: dict = Depends(admin_session)):
+        changing(request, s)
+        if not SLUG.fullmatch(slug): raise HTTPException(404)
+        with updater.lock:
+            row = db.one('SELECT name FROM apps WHERE slug=?', (slug,))
+            if not row: raise HTTPException(404)
+            owner, repo = repository(db, slug, cfg.trusted_owner)
+            custom = bool(db.one('SELECT slug FROM app_sources WHERE slug=?', (slug,)))
+            # Disable access and rediscovery before touching files. If cleanup
+            # fails, the disabled record remains for a safe retry.
+            with db.tx() as con:
+                con.execute('INSERT OR IGNORE INTO removed_apps(slug,name,owner,repository,custom) VALUES(?,?,?,?,?)', (slug,row['name'],owner,repo,int(custom)))
+                con.execute('UPDATE apps SET disabled=1 WHERE slug=?', (slug,))
+                con.execute("DELETE FROM sessions WHERE kind='app' AND scope=?", (slug,))
+                con.execute('DELETE FROM launch_tickets WHERE slug=?', (slug,))
+                for prefs in con.execute('SELECT user_id,app_order,hidden_dock_apps FROM user_preferences').fetchall():
+                    order = [item for item in json.loads(prefs['app_order']) if item != slug]
+                    hidden = [item for item in json.loads(prefs['hidden_dock_apps']) if item != slug]
+                    con.execute('UPDATE user_preferences SET app_order=?,hidden_dock_apps=? WHERE user_id=?',
+                                (json.dumps(order),json.dumps(hidden),prefs['user_id']))
+            base = cfg.data_dir / 'apps'
+            target = base / slug
+            if base.is_symlink() or target.is_symlink() or target.resolve().parent != base.resolve():
+                raise HTTPException(500, 'Application file cleanup failed')
+            try:
+                if target.exists(): shutil.rmtree(target)
+            except OSError as exc:
+                raise HTTPException(500, 'Application file cleanup failed') from exc
+            db.run('DELETE FROM apps WHERE slug=?', (slug,))
+        db.log('warning','app_removed',s['username'],slug)
+        return {'ok': True}
+
+    @app.post('/api/admin/apps/{slug}/restore')
+    def restore_removed_app(slug: str, request: Request, s: dict = Depends(admin_session)):
+        changing(request, s)
+        if not SLUG.fullmatch(slug): raise HTTPException(404)
+        with updater.lock:
+            with db.tx() as con:
+                row = con.execute('SELECT * FROM removed_apps WHERE slug=?', (slug,)).fetchone()
+                if not row: raise HTTPException(404)
+                if con.execute('SELECT slug FROM apps WHERE slug=?', (slug,)).fetchone():
+                    raise HTTPException(409, 'Finish removing the application before restoring it')
+                con.execute('INSERT INTO apps(slug,name,description) VALUES(?,?,?)', (slug,row['name'],'Creatieve applicatie'))
+                if row['custom']:
+                    con.execute('INSERT INTO app_sources(slug,owner,repository) VALUES(?,?,?)',(slug,row['owner'],row['repository']))
+                con.execute('DELETE FROM removed_apps WHERE slug=?', (slug,))
+        db.log('info','app_restored',s['username'],slug)
+        return {'ok': True, 'scheduled': updater.trigger()}
 
     @app.put('/api/admin/sources/{slug}')
     def save_source(slug: str, request: Request, payload: SourceInput, s: dict = Depends(admin_session)):

@@ -314,6 +314,8 @@ class Updater:
             raise InstallError("Release ZIP size or checksum mismatch")
 
     def sync_app(self,slug: str):
+        if self.db.one('SELECT slug FROM removed_apps WHERE slug=?', (slug,)):
+            raise InstallError('Application has been removed')
         owner,repo=repository(self.db,slug,self.cfg.trusted_owner)
         api=f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
         release=json.loads(self.request(api))
@@ -424,6 +426,8 @@ class Updater:
                 self.db.log("error","catalog_failed",catalog_error)
             existing={app["slug"] for app in self.db.all("SELECT slug FROM apps")}
             slugs=sorted(set(catalog_slugs) | set(EXTRA_APPS) | {x['slug'] for x in self.db.all('SELECT slug FROM app_sources')})
+            removed={x['slug'] for x in self.db.all('SELECT slug FROM removed_apps')}
+            slugs=[slug for slug in slugs if slug not in removed]
             if self.db.setting("auto_discover_apps")!="true":
                 slugs=[x for x in slugs if x in existing]
             errors=[]; updates=0

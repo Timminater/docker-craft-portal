@@ -29,6 +29,14 @@ current check finishes. Failed installs are reported under Administration.
 Unknown apps use fallback artwork and a generic description; browser and app
 compatibility is not guaranteed for arbitrary third-party builds.
 
+Administrators can remove an application from Administration. The portal stops
+its sessions, removes installed app code and prevents automatic rediscovery.
+Removing an app affects every portal user; browser documents are not removed.
+The removed-app list can restore the app's name and configured repository and
+schedule a fresh download. Each user can independently choose dock icons through
+**Customize dock** on the application library; running hidden apps stay visible
+until closed.
+
 Update the portal image and reload. With automatic discovery enabled (the default),
 the startup updater discovers SolidCraft and installs its latest supported stable
 release. Alternatively use Administration → Check now. If automatic discovery was

@@ -2,7 +2,7 @@
 
 Self-hosted, login-protected web portal for all *official* ArtCraft WebAssembly apps. **One Docker container**, no Linux desktop streaming, no per-app containers, no runtime Rust compilation. The release updater automatically discovers compatible new apps in the official [ArtCraft catalog](https://getartcraft.com/apps), downloads verified official release ZIPs, installs versions transactionally and retains the previous two releases.
 
-> **Stable release: v2026.10.28.1.** Includes personal account security, browser storage information, dock selection and a version/update overview. Authentication, updates, backups, Chromium/Firefox browser workflows and multiarchitecture builds are release-gated. Real PhotoCraft and SolidCraft releases have also been exercised. App-specific compatibility and native ARM64 runtime verification are tracked in [acceptance evidence](docs/ACCEPTANCE.md) and [known limitations](docs/KNOWN_LIMITATIONS.md).
+> **Stable release: v2026.10.28.2.** Includes personal account security, browser storage information, dock selection and a version/update overview. Authentication, updates, backups, Chromium/Firefox browser workflows and multiarchitecture builds are release-gated. Real PhotoCraft and SolidCraft releases have also been exercised. App-specific compatibility and native ARM64 runtime verification are tracked in [acceptance evidence](docs/ACCEPTANCE.md) and [known limitations](docs/KNOWN_LIMITATIONS.md).
 
 ## Features already implemented
 

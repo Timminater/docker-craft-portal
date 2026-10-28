@@ -159,9 +159,17 @@ class Auth:
             con.execute("DELETE FROM launch_tickets WHERE parent_hash=?", (token_hash,))
             con.execute("DELETE FROM account_mfa_pending WHERE parent_hash=?", (token_hash,))
 
-    def new_ticket(self, session: dict, slug: str) -> str:
+    def new_ticket(self, session: dict, slug: str, *, require_active: bool = False) -> str | None:
         token = secrets.token_urlsafe(32)
-        self.db.run("INSERT INTO launch_tickets(ticket_hash,user_id,slug,parent_hash,expires_at) VALUES(?,?,?,?,?)", (digest(token),session["user_id"],slug,session["token_hash"],time.time()+45))
+        with self.db.tx() as con:
+            if require_active:
+                active=con.execute("SELECT 1 FROM apps WHERE slug=? AND active_version IS NOT NULL AND disabled=0",(slug,)).fetchone()
+                parent=con.execute("""SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id
+                    WHERE s.token_hash=? AND s.user_id=? AND s.kind='portal' AND s.expires_at>? AND u.enabled=1""",
+                    (session['token_hash'],session['user_id'],time.time())).fetchone()
+                if not active or not parent:
+                    return None
+            con.execute("INSERT INTO launch_tickets(ticket_hash,user_id,slug,parent_hash,expires_at) VALUES(?,?,?,?,?)", (digest(token),session["user_id"],slug,session["token_hash"],time.time()+45))
         return token
 
     def redeem_ticket(self, ticket: str, slug: str) -> str | None:
@@ -173,6 +181,6 @@ class Auth:
             if row is None:
                 return None
             con.execute("DELETE FROM launch_tickets WHERE ticket_hash=?", (digest(ticket),))
-        if not row["enabled"]:
-            return None
-        return self.new_session(row["user_id"], "app", slug, row["parent_hash"])
+            if not row["enabled"]:
+                return None
+            return self._insert_session(con, row["user_id"], "app", slug, row["parent_hash"])
